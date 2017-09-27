@@ -1,0 +1,9 @@
+(jbuild_version 1)
+
+(executables
+ ((names (bun))
+  (libraries (bos cmdliner))))
+
+(install
+ ((section bin)
+  (files ((bun.exe as bun)))))

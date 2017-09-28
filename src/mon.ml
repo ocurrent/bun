@@ -1,12 +1,12 @@
-let statsfile =
+let output_dir =
   let fpath_conv = Cmdliner.Arg.conv Fpath.(of_string, pp) in
-  let doc = "Where to look for fuzzing statistics.  This is likely some \
-             output/fuzzer_stats which afl-fuzz is writing into." in
-  Cmdliner.Arg.(required & pos 0 (some fpath_conv) None & info [] ~docv:"STATS" ~doc)
+  let doc = "Output directory for the fuzzer.  This should contain a fuzzer_stats \
+             and is expected to be the -o argument to afl-fuzz." in
+  Cmdliner.Arg.(required & pos 0 (some fpath_conv) None & info [] ~docv:"OUTPUT" ~doc)
 
-let pid =
-  let doc = "Which PID to kill." in
-  Cmdliner.Arg.(required & pos 1 (some int) None & info [] ~docv:"PID" ~doc)
+let verbosity =
+  let doc = "Report on intermediate progress." in
+  Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
 
 let get_stats lines =
   (* did someone say shotgun parsers? *)
@@ -18,12 +18,38 @@ let get_stats lines =
   (* convert 2-length lists to tuples *)
   List.map (function hd::tl::[] -> hd,tl | _ -> assert false) lines
 
-let mon stats pid : (unit, Rresult.R.msg) result =
+let try_kill pid =
+  try
+    (* cheap and dirty sanitization -- it would be a weird attack vector,
+       admittedly *)
+    Bos.OS.Cmd.run Bos.Cmd.(empty % "kill" % string_of_int (int_of_string pid))
+  with
+  | Invalid_argument _ -> Error (`Msg "fuzzer_pid is not a valid int; refusing \
+                                       to kill")
+let lookup s l = List.find_opt (fun (a,_) -> Astring.String.equal a s) l
+
+let print_stats verbose lines =
+  let default d = function
+    | None -> ""
+    | Some (_, p) -> p
+  in
+  match List.length verbose with
+  | 0 -> ()
+  | _ ->
+    let execs = lookup "execs_per_sec" lines |> default "an unknowable number of" in
+    Printf.printf "fuzzing hard at %s executions per second\n%!" execs
+
+let print_crashes output_dir =
+  (* TODO: find crashes, base64 encode them, and print them out on the console
+  *)
+  ()
+
+let rec mon verbose output_dir : (unit, Rresult.R.msg) result =
+  let stats = Fpath.(output_dir / "fuzzer_stats") in
   match Bos.OS.File.read_lines stats with
   | Error (`Msg e) ->
     Error (`Msg (Format.asprintf "Error reading stats file %a: %s" Fpath.pp stats e))
   | Ok lines ->
-    let lookup s l = List.find_opt (fun (a,_) -> Astring.String.equal a s) l in
     let default d = function
       | None -> d
       | Some (_, p) -> try int_of_string p with Invalid_argument _ -> d
@@ -31,16 +57,25 @@ let mon stats pid : (unit, Rresult.R.msg) result =
     let lines = get_stats lines in
     let crashes = lookup "unique_crashes" lines in
     let cycles = lookup "cycles_done" lines in
-    match (default 0 crashes, default 0 cycles) with
-    | 0, 0 -> Ok ()
-    | 0, cycles ->
-      Printf.printf "%d cycles completed and no crashes found\n%!" cycles;
-      Ok ()
-    | crashes, _ ->
-      Printf.printf "%d crashes found! Killing %d...\n%!" crashes pid;
-      Bos.OS.Cmd.run Bos.Cmd.(empty % "kill" % string_of_int pid)
+    match lookup "fuzzer_pid" lines with
+    | None -> Error (`Msg (Format.asprintf
+                             "no PID for the fuzzer found in stats file %a"
+                             Fpath.pp stats))
+    | Some (_, pid) ->
+      match (default 0 crashes, default 0 cycles) with
+      | 0, 0 ->
+        print_stats verbose lines;
+        Unix.sleep 60;
+        mon verbose stats
+      | 0, cycles ->
+        Printf.printf "%d cycles completed and no crashes found\n%!" cycles;
+        try_kill pid
+      | crashes, _ ->
+        print_crashes output_dir;
+        Printf.printf "%d crashes found! Killing %s...\n%!" crashes pid;
+        try_kill pid
 
-let mon_t = Cmdliner.Term.(const mon $ statsfile $ pid)
+let mon_t = Cmdliner.Term.(const mon $ verbosity $ output_dir)
 
 let mon_info =
   let doc = "monitor a running afl-fuzz instance, and kill it once it's tried \

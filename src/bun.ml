@@ -18,14 +18,17 @@ let fuzzer =
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-fuzz" & info ["fuzzer"] ~docv:"FUZZER" ~doc)
 
 let fuzz fuzzer input output program : (unit, Rresult.R.msg) result =
-  let base = Bos.Cmd.v fuzzer in
-  match Bos.OS.Cmd.exists base with
+  match Bos.OS.Cmd.exists (Bos.Cmd.(v fuzzer)) with
   | Ok true ->
-    let go = Bos.Cmd.(base % "-i" % input % "-o" % output % program % "@@") in
-    Printf.printf "%s" @@ Bos.Cmd.to_string go;
-    Bos.OS.Cmd.run go
+    let null = Bos.OS.File.null in
+    let null_fd = Unix.openfile (Fpath.to_string null) [] 0o000 in
+    let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
+        ~argv:[fuzzer; "-i"; input; "-o"; output; "--"; program; "@@"] () in
+    Unix.close null_fd;
+    Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
+    Ok ()
   | Ok false ->
-    Error (`Msg (fuzzer ^ " not found - please check $PATH")) 
+    Error (`Msg (fuzzer ^ " not found - please ensure it exists and is an executable file"))
   | Error (`Msg e) ->
     Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
 

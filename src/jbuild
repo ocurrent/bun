@@ -1,9 +1,11 @@
 (jbuild_version 1)
 
 (executables
- ((names (bun))
-  (libraries (bos cmdliner))))
+ ((names (bun mon))
+  (libraries (bos cmdliner fpath rresult astring spawn afl-persistent)))
+)
 
 (install
  ((section bin)
-  (files ((bun.exe as bun)))))
+  (files ((bun.exe as bun) (mon.exe as mon)))
+))

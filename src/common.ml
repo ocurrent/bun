@@ -26,7 +26,6 @@ let print_stats verbose lines =
     | Some (_, p) -> p
   in
   match List.length verbose with
-  | 0 -> ()
   | _ ->
     let execs = lookup "execs_per_sec" lines |> default "an unknowable number of" in
     let paths = lookup "paths_found" lines |> default "an unknowable number of" in
@@ -53,28 +52,25 @@ let print_crashes output_dir =
     Printf.printf "%d crashes found! Take a look; copy/paste to save for \
                    reproduction:\n%!" (List.length crashes);
     try
-      (* TODO: capture stdout and reprint it with more helpful surrounding
-         context (something copy/pasteable directly to make a file) *)
       List.iteri (fun i c ->
           match get_base64 c with
-          | Ok base64 ->
-              Printf.printf "---- %s -----\n%s\n-----\n%!"
-              (Fpath.to_string c) (output_pasteable base64 i)
           | Error _ -> ()
+          | Ok base64 ->
+            Printf.printf "---- %s -----\n%s\n-----\n%!"
+              (Fpath.to_string c) (output_pasteable base64 i)
         ) crashes;
       Ok ()
     with
     | Invalid_argument e -> Error (`Msg (Format.asprintf "Failed to base64 a \
                                                           crash file: %s" e))
 
-let rec mon verbose pid humane oneshot stats output_dir : (unit, Rresult.R.msg) result =
-  let stats = match stats with
-    | None -> Fpath.(output_dir / "fuzzer_stats")
-    | Some stats -> stats
-  in
+let rec mon verbose pid humane oneshot stats : (unit, Rresult.R.msg) result =
   match Bos.OS.File.read_lines stats with
   | Error (`Msg e) ->
-    Error (`Msg (Format.asprintf "Error reading stats file %a: %s" Fpath.pp stats e))
+    (* TODO: blocking on this forever is probably not a great call *)
+    Printf.eprintf "%s\n%!" e;
+    Unix.sleep 1;
+    mon verbose pid humane oneshot stats
   | Ok lines ->
     let default d = function
       | None -> d
@@ -97,7 +93,7 @@ let rec mon verbose pid humane oneshot stats output_dir : (unit, Rresult.R.msg) 
         Ok ()
       end else begin
         Unix.sleep 1;
-        mon verbose (Some pid) humane oneshot (Some stats) output_dir
+        mon verbose (Some pid) humane oneshot stats
       end
     | Some file_pid, _ -> (* either no pid specified or it matches the one in the file *)
       match (default 0 crashes, default 0 cycles) with
@@ -105,12 +101,13 @@ let rec mon verbose pid humane oneshot stats output_dir : (unit, Rresult.R.msg) 
         print_stats verbose lines;
         if oneshot then Ok () else begin
           Unix.sleep 60;
-          mon verbose pid humane oneshot (Some stats) output_dir
+          mon verbose pid humane oneshot stats
         end
       | 0, cycles ->
         Printf.printf "%d cycles completed and no crashes found\n%!" cycles;
         if humane then Ok () else try_kill file_pid
       | _, _ ->
+        let output_dir = Fpath.parent stats in
         let _ = print_crashes output_dir in
         Printf.printf "Killing %d...\n%!" file_pid;
         if humane then Ok () else try_kill file_pid

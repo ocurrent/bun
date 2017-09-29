@@ -26,23 +26,26 @@ let fuzzer =
                 & info ["fuzzer"] ~docv:"FUZZER" ~doc)
 
 let fuzz verbosity fuzzer input output program : (unit, Rresult.R.msg) result =
-  match Bos.OS.Cmd.exists (Bos.Cmd.(v fuzzer)) with
-  | Ok true ->
-    let null = Bos.OS.File.null in
-    let null_fd = Unix.openfile (Fpath.to_string null) [] 0o000 in
-    let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
-        ~argv:[fuzzer; "-i"; (Fpath.to_string input);
-               "-o"; (Fpath.to_string output);
-               "--"; program; "@@"] () in
-    Unix.close null_fd;
-    if (List.length verbosity) >1 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
-    (* monitor the process we just started with `mon`, and kill it when useful
-       results have been obtained *)
-    Common.mon verbosity (Some pid) false false None output
-  | Ok false ->
-    Error (`Msg (fuzzer ^ " not found - please ensure it exists and is an executable file"))
-  | Error (`Msg e) ->
-    Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
+  match Bos.OS.Dir.create output with
+  | Error e -> Error e
+  | Ok _ ->
+    match Bos.OS.Cmd.exists (Bos.Cmd.(v fuzzer)) with
+    | Ok true ->
+      let null = Bos.OS.File.null in
+      let null_fd = Unix.openfile (Fpath.to_string null) [] 0o000 in
+      let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
+          ~argv:[fuzzer; "-i"; (Fpath.to_string input);
+                 "-o"; (Fpath.to_string output);
+                 "--"; program; "@@"] () in
+      Unix.close null_fd;
+      if (List.length verbosity) >1 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
+      (* monitor the process we just started with `mon`, and kill it when useful
+         results have been obtained *)
+      Common.mon verbosity (Some pid) false false Fpath.(output / "fuzzer_stats")
+    | Ok false ->
+      Error (`Msg (fuzzer ^ " not found - please ensure it exists and is an executable file"))
+    | Error (`Msg e) ->
+      Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer (* bun/mon args *)

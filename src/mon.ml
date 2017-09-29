@@ -17,12 +17,17 @@ let oneshot =
   let doc = "Run once and report, rather than polling the stats file." in
   Cmdliner.Arg.(value & flag & info ["oneshot"] ~docv:"ONESHOT" ~doc)
 
+let pid =
+  let doc = "PID of afl-fuzz to kill.  If -H is also provided, this option does nothing." in
+  Cmdliner.Arg.(value & opt (some int) None & info ["pid"] ~docv:"PID" ~doc)
+
 let stats =
   let doc = "Stats file to monitor, if not OUTPUT/fuzzer_stats ." in
   Cmdliner.Arg.(value & opt (some fpath_conv) None & info ["statsfile"] ~docv:"STATS" ~doc)
 
 let mon_t = Cmdliner.Term.(const Common.mon
-                           $ verbosity $ humane $ oneshot $ stats $ output_dir)
+                           $ verbosity
+                           $ pid $ humane $ oneshot $ stats $ output_dir)
 
 let mon_info =
   let doc = "monitor a running afl-fuzz instance, and kill it once it's tried \

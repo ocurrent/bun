@@ -38,7 +38,7 @@ let fuzz verbosity fuzzer input output program : (unit, Rresult.R.msg) result =
     if (List.length verbosity) >1 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
     (* monitor the process we just started with `mon`, and kill it when useful
        results have been obtained *)
-    Common.mon verbosity false false None output
+    Common.mon verbosity (Some pid) false false None output
   | Ok false ->
     Error (`Msg (fuzzer ^ " not found - please ensure it exists and is an executable file"))
   | Error (`Msg e) ->

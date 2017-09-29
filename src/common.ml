@@ -31,7 +31,15 @@ let print_stats verbose lines =
     let execs = lookup "execs_per_sec" lines |> default "an unknowable number of" in
     let paths = lookup "paths_found" lines |> default "an unknowable number of" in
     Printf.printf "fuzzing hard at %s executions per second, having already \
-    discovered %s execution paths\n%!" execs paths
+                   discovered %s execution paths\n%!" execs paths
+
+let output_pasteable str id =
+  Printf.sprintf "echo %s | base64 -d > crash_$(date -u +%%s).%d" str id
+
+let get_base64 f =
+  Bos.OS.Cmd.run_out @@
+  Bos.Cmd.(v "base64" % (Fpath.to_string f)) |>
+  Bos.OS.Cmd.to_string
 
 let print_crashes output_dir =
   let crashes = Fpath.(output_dir / "crashes" / "id$(file)" ) in
@@ -40,12 +48,18 @@ let print_crashes output_dir =
     Error (`Msg(Format.asprintf "Failure finding crashes in \
                                  directory %a: %s" Fpath.pp crashes e))
   | Ok crashes ->
+    Printf.printf "%d crashes found! Take a look; copy/paste to save for \
+                   reproduction:\n%!" (List.length crashes);
     try
       (* TODO: capture stdout and reprint it with more helpful surrounding
          context (something copy/pasteable directly to make a file) *)
-      List.iter (fun c -> Bos.OS.Cmd.run @@
-                          Bos.Cmd.(v "base64" % (Fpath.to_string c)) |>
-                          Rresult.R.get_ok) crashes;
+      List.iteri (fun i c ->
+          match get_base64 c with
+          | Ok base64 ->
+              Printf.printf "---- %s -----\n%s\n-----\n%!"
+              (Fpath.to_string c) (output_pasteable base64 i)
+          | Error _ -> ()
+        ) crashes;
       Ok ()
     with
     | Invalid_argument e -> Error (`Msg (Format.asprintf "Failed to base64 a \
@@ -94,8 +108,7 @@ let rec mon verbose pid humane oneshot stats output_dir : (unit, Rresult.R.msg) 
       | 0, cycles ->
         Printf.printf "%d cycles completed and no crashes found\n%!" cycles;
         if humane then Ok () else try_kill file_pid
-      | crashes, _ ->
-        Printf.printf "%d crashes found! Take a look:\n%!" crashes;
+      | _, _ ->
         let _ = print_crashes output_dir in
         Printf.printf "Killing %d...\n%!" file_pid;
         if humane then Ok () else try_kill file_pid

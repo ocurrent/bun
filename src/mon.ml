@@ -1,5 +1,6 @@
+let fpath_conv = Cmdliner.Arg.conv Fpath.(of_string, pp)
+
 let output_dir =
-  let fpath_conv = Cmdliner.Arg.conv Fpath.(of_string, pp) in
   let doc = "Output directory for the fuzzer.  This should contain a fuzzer_stats \
              and is expected to be the -o argument to afl-fuzz." in
   Cmdliner.Arg.(required & pos 0 (some fpath_conv) None & info [] ~docv:"OUTPUT" ~doc)
@@ -7,6 +8,18 @@ let output_dir =
 let verbosity =
   let doc = "Report on intermediate progress." in
   Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
+
+let humane =
+  let doc = "Humane mode (don't kill the fuzzer)" in
+  Cmdliner.Arg.(value & flag & info ["H"] ~docv:"HUMANE" ~doc)
+
+let oneshot =
+  let doc = "Run once and report, rather than polling the stats file." in
+  Cmdliner.Arg.(value & flag & info ["oneshot"] ~docv:"ONESHOT" ~doc)
+
+let stats =
+  let doc = "Stats file to monitor, if not OUTPUT/fuzzer_stats ." in
+  Cmdliner.Arg.(value & opt (some fpath_conv) None & info ["statsfile"] ~docv:"STATS" ~doc)
 
 let get_stats lines =
   (* did someone say shotgun parsers? *)
@@ -37,15 +50,31 @@ let print_stats verbose lines =
   | 0 -> ()
   | _ ->
     let execs = lookup "execs_per_sec" lines |> default "an unknowable number of" in
-    Printf.printf "fuzzing hard at %s executions per second\n%!" execs
+    let paths = lookup "paths_found" lines |> default "an unknowable number of" in
+    Printf.printf "fuzzing hard at %s executions per second, having already \
+    discovered %s execution paths\n%!" execs paths
 
 let print_crashes output_dir =
-  (* TODO: find crashes, base64 encode them, and print them out on the console
-  *)
-  ()
+  let crashes = Fpath.(output_dir / "crashes" / "id$(file)" ) in
+  match Bos.OS.Path.matches crashes with
+  | Error (`Msg e) ->
+    Error (`Msg(Format.asprintf "Failure finding crashes in \
+                                 directory %a: %s" Fpath.pp crashes e))
+  | Ok crashes ->
+    try
+      List.iter (fun c -> Bos.OS.Cmd.run @@
+                          Bos.Cmd.(v "base64" % (Fpath.to_string c)) |>
+                          Rresult.R.get_ok) crashes;
+      Ok ()
+    with
+    | Invalid_argument e -> Error (`Msg (Format.asprintf "Failed to base64 a \
+    crash file: %s" e))
 
-let rec mon verbose output_dir : (unit, Rresult.R.msg) result =
-  let stats = Fpath.(output_dir / "fuzzer_stats") in
+let rec mon verbose humane oneshot stats output_dir : (unit, Rresult.R.msg) result =
+  let stats = match stats with
+    | None -> Fpath.(output_dir / "fuzzer_stats")
+    | Some stats -> stats
+  in
   match Bos.OS.File.read_lines stats with
   | Error (`Msg e) ->
     Error (`Msg (Format.asprintf "Error reading stats file %a: %s" Fpath.pp stats e))
@@ -65,17 +94,20 @@ let rec mon verbose output_dir : (unit, Rresult.R.msg) result =
       match (default 0 crashes, default 0 cycles) with
       | 0, 0 ->
         print_stats verbose lines;
-        Unix.sleep 60;
-        mon verbose stats
+        if oneshot then Ok () else begin
+          Unix.sleep 60;
+          mon verbose humane oneshot (Some stats) output_dir
+        end
       | 0, cycles ->
         Printf.printf "%d cycles completed and no crashes found\n%!" cycles;
-        try_kill pid
+        if humane then Ok () else try_kill pid
       | crashes, _ ->
-        print_crashes output_dir;
-        Printf.printf "%d crashes found! Killing %s...\n%!" crashes pid;
-        try_kill pid
+        Printf.printf "%d crashes found! Take a look:\n%!" crashes;
+        let _ = print_crashes output_dir in
+        Printf.printf "Killing %s...\n%!" pid;
+        if humane then Ok () else try_kill pid
 
-let mon_t = Cmdliner.Term.(const mon $ verbosity $ output_dir)
+let mon_t = Cmdliner.Term.(const mon $ verbosity $ humane $ oneshot $ stats $ output_dir)
 
 let mon_info =
   let doc = "monitor a running afl-fuzz instance, and kill it once it's tried \

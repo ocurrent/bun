@@ -30,8 +30,10 @@ let print_stats verbose lines =
   | _ ->
     let execs = lookup "execs_per_sec" lines |> default "an unknowable number of" in
     let paths = lookup "paths_found" lines |> default "an unknowable number of" in
+    let stability = lookup "stability" lines |> default "an unknowable amount of" in
     Printf.printf "fuzzing hard at %s executions per second, having already \
-                   discovered %s execution paths\n%!" execs paths
+                   discovered %s execution paths with %s stability\n%!"
+      execs paths stability
 
 let output_pasteable str id =
   Printf.sprintf "echo %s | base64 -d > crash_$(date -u +%%s).%d" str id

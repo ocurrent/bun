@@ -3,6 +3,15 @@ let program =
   let doc = "Fuzz this program.  (Ideally it's a Crowbar test.)" in
   Cmdliner.Arg.(required & pos 0 obligatory_file None & info [] ~docv:"PROGRAM"
                   ~doc)
+
+let program_argv =
+  let doc = "Arguments to the program to be fuzzed.  These will be prepended \
+             to the invocation, and the file to be considered as input last; \
+             in other words, `bun myprogram --for-fun on-fire` will run \
+             `afl-fuzz {afl arguments} -- myprogram --for-fun on-fire @@`." in
+  Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"PROGRAM_ARGS"
+                  ~doc)
+
 let verbosity =
   let doc = "Report on intermediate progress." in
   Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
@@ -25,7 +34,8 @@ let fuzzer =
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-fuzz"
                 & info ["fuzzer"] ~docv:"FUZZER" ~doc)
 
-let fuzz verbosity fuzzer input output program : (unit, Rresult.R.msg) result =
+let fuzz verbosity fuzzer input output program program_argv
+  : (unit, Rresult.R.msg) result =
   match Bos.OS.Dir.create output with
   | Error e -> Error e
   | Ok _ ->
@@ -33,10 +43,11 @@ let fuzz verbosity fuzzer input output program : (unit, Rresult.R.msg) result =
     | Ok true ->
       let null = Bos.OS.File.null in
       let null_fd = Unix.openfile (Fpath.to_string null) [] 0o000 in
-      let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
-          ~argv:[fuzzer; "-i"; (Fpath.to_string input);
+      let argv = [fuzzer; "-i"; (Fpath.to_string input);
                  "-o"; (Fpath.to_string output);
-                 "--"; program; "@@"] () in
+                  "--"; program; ] @ program_argv @ ["@@"] in
+      let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
+          ~argv () in
       Unix.close null_fd;
       if (List.length verbosity) >1 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
       (* monitor the process we just started with `mon`, and kill it when useful
@@ -50,7 +61,7 @@ let fuzz verbosity fuzzer input output program : (unit, Rresult.R.msg) result =
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer (* bun/mon args *)
                             $ input_dir $ output_dir (* fuzzer flags *)
-                            $ program)
+                            $ program $ program_argv)
 
 let bun_info =
   let doc = "invoke afl-fuzz on a program in a CI-friendly way" in

@@ -16,4 +16,5 @@
   (action (run bun "-v"
             "--input=../../../test/input"
             "--output=../../../test/output"
-            ${bin:mon}))))
+            "--"
+            ${bin:mon} "-H" "--oneshot"))))

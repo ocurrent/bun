@@ -46,10 +46,12 @@ let fuzz verbosity fuzzer input output program program_argv
       let argv = [fuzzer; "-i"; (Fpath.to_string input);
                  "-o"; (Fpath.to_string output);
                   "--"; program; ] @ program_argv @ ["@@"] in
+      if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
+        String.concat " " argv;
       let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
           ~argv () in
       Unix.close null_fd;
-      if (List.length verbosity) >1 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
+      if (List.length verbosity) > 0 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
       (* monitor the process we just started with `mon`, and kill it when useful
          results have been obtained *)
       Common.mon verbosity (Some pid) false false Fpath.(output / "fuzzer_stats")

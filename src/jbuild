@@ -2,7 +2,7 @@
 
 (executables
  ((names (bun mon))
-  (libraries (bos cmdliner fpath rresult astring spawn afl-persistent)))
+  (libraries (bos cmdliner fpath rresult astring spawn)))
 )
 
 (install

@@ -21,5 +21,4 @@ let mon_info =
              hard enough" in
   Cmdliner.Term.(info ~version:"%%VERSION%%" ~exits:default_exits ~doc "mon")
 
-let () = AflPersistent.run (fun () -> Cmdliner.Term.(exit @@ eval (mon_t,
-                                                                   mon_info)))
+let () = Cmdliner.Term.(exit @@ eval (mon_t, mon_info))

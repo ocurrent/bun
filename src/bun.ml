@@ -12,6 +12,10 @@ let program_argv =
   Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"PROGRAM_ARGS"
                   ~doc)
 
+let parallel =
+  let doc = "Start more fuzzer instances in parallel, if CPU is available." in
+  Cmdliner.Arg.(value & flag & info ["p"] ~docv:"PARALLEL" ~doc)
+
 let verbosity =
   let doc = "Report on intermediate progress." in
   Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
@@ -34,34 +38,94 @@ let fuzzer =
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-fuzz"
                 & info ["fuzzer"] ~docv:"FUZZER" ~doc)
 
-let fuzz verbosity fuzzer input output program program_argv
+let got_cpu =
+  let doc = "The command to run to see whether more cores are available.  It \
+             should exit with 0 if more cores are available for fuzzing,
+             and 1 if they are not." in
+  Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-gotcpu"
+                & info ["got_cpu"] ~docv:"CPUCHECK" ~doc)
+
+
+let parallelize ~primary num =
+  match primary with
+  | false -> ["-S"; string_of_int num]
+  | true -> ["-M"; string_of_int num]
+
+let try_another_core cpu =
+  let cmd = Bos.Cmd.v cpu in
+  Bos.OS.Cmd.(match run_out cmd |> out_null with
+      | Ok (_, (_, `Exited 0)) -> true
+      | Ok _ | Error _ -> false)
+
+let is_running pid =
+  let cmd = Bos.Cmd.(v "pmap" % string_of_int pid) in
+  Bos.OS.Cmd.(match run_out cmd |> out_null with
+      | Ok (_, (_, `Exited 0)) -> Ok true
+      | Ok (_, (_, `Exited 42)) -> Ok false
+      | Ok _ -> Ok false
+      | Error e -> Error e)
+
+let spawn verbosity primary id fuzzer input output program program_argv : int =
+  let argv = [fuzzer; "-i"; (Fpath.to_string input);
+              "-o"; (Fpath.to_string output); ]
+              @ (parallelize ~primary id) @
+              ["--"; program; ] @ program_argv @ ["@@"] in
+  if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
+    String.concat " " argv;
+  let null_fd = Unix.openfile (Fpath.to_string Bos.OS.File.null) [] 0o000 in
+  let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer ~argv () in
+  Unix.close null_fd;
+  if (List.length verbosity) > 0 then
+    Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
+  pid
+
+let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
   : (unit, Rresult.R.msg) result =
+  let fill_cores ~primary_pid start_id =
+    let rec launch_more i (l : int list) : int list =
+      match try_another_core got_cpu with
+      | false -> l
+      | true -> launch_more (i+1) @@
+        spawn verbosity false i fuzzer input output program program_argv :: l 
+    in
+    match is_running primary_pid with
+    | Error e -> Error e
+    | Ok false ->
+      let fail = Printf.sprintf "fuzzer (PID %d) died :(\n%!" primary_pid in
+      Error (`Msg fail)
+    | Ok true ->
+      let other_pids = launch_more (start_id + 1) [] in
+      Ok (primary_pid :: other_pids)
+    (* monitor the process we just started with `mon`, and kill it when useful
+         results have been obtained *)
+  in
   match Bos.OS.Dir.create output with
   | Error e -> Error e
   | Ok _ ->
     match Bos.OS.Cmd.exists (Bos.Cmd.(v fuzzer)) with
-    | Ok true ->
-      let null = Bos.OS.File.null in
-      let null_fd = Unix.openfile (Fpath.to_string null) [] 0o000 in
-      let argv = [fuzzer; "-i"; (Fpath.to_string input);
-                 "-o"; (Fpath.to_string output);
-                  "--"; program; ] @ program_argv @ ["@@"] in
-      if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
-        String.concat " " argv;
-      let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer
-          ~argv () in
-      Unix.close null_fd;
-      if (List.length verbosity) > 0 then Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
-      (* monitor the process we just started with `mon`, and kill it when useful
-         results have been obtained *)
-      Common.mon verbosity (Some pid) false false Fpath.(output / "fuzzer_stats")
     | Ok false ->
       Error (`Msg (fuzzer ^ " not found - please ensure it exists and is an executable file"))
     | Error (`Msg e) ->
       Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
+    | Ok true ->
+      (* always start at least one afl-fuzz *)
+      let primary, id = true, 1 in
+      let primary_pid = spawn verbosity primary id fuzzer input output program program_argv in
+      Sys.(set_signal sigchld (Signal_handle (fun _ -> Printf.printf "sigchld")));
+      match parallel with
+      | false ->
+        Common.mon verbosity [primary_pid] false false Fpath.(output /
+                                                              string_of_int id /
+                                                              "fuzzer_stats")
+      | true ->
+        match fill_cores ~primary_pid id with
+        | Error e -> Error e
+        | Ok pid_list ->
+        Common.mon verbosity pid_list false false Fpath.(output / "fuzzer_stats")
 
 let fuzz_t = Cmdliner.Term.(const fuzz
-                            $ verbosity $ fuzzer (* bun/mon args *)
+                            $ verbosity $ fuzzer
+                            $ parallel $ got_cpu (* bun/mon args *)
                             $ input_dir $ output_dir (* fuzzer flags *)
                             $ program $ program_argv)
 

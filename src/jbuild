@@ -2,19 +2,15 @@
 
 (executables
  ((names (bun mon))
+  (public_names (bun mon))
   (libraries (bos cmdliner fpath rresult astring spawn)))
 )
 
-(install
- ((section bin)
-  (files ((bun.exe as bun) (mon.exe as mon)))
-))
-
 (alias
  ((name runtest)
-  (deps (bun.exe mon.exe))
-  (action (run bun "-v"
-            "--input=../../../test/input"
-            "--output=../../../test/output"
+  (deps (bun.exe mon.exe (files_recursively_in test/input)))
+  (action (run ${bin:bun} "-v"
+            "--input=../../.aliases/test/input"
+            "--output=output"
             "--"
             ${bin:mon} "-H" "--oneshot"))))

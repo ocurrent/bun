@@ -14,7 +14,7 @@ let stats =
 
 let mon_t = Cmdliner.Term.(const Common.mon
                            $ verbosity
-                           $ const None $ const true $ oneshot $ stats)
+                           $ const [] $ const true $ oneshot $ stats)
 
 let mon_info =
   let doc = "monitor a running afl-fuzz instance, and kill it once it's tried \

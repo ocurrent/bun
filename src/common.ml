@@ -64,13 +64,13 @@ let print_crashes output_dir =
     | Invalid_argument e -> Error (`Msg (Format.asprintf "Failed to base64 a \
                                                           crash file: %s" e))
 
-let rec mon verbose pid humane oneshot stats : (unit, Rresult.R.msg) result =
+let rec mon verbose pids humane oneshot stats : (unit, Rresult.R.msg) result =
   match Bos.OS.File.read_lines stats with
   | Error (`Msg e) ->
     (* TODO: blocking on this forever is probably not a great call *)
     Printf.eprintf "%s\n%!" e;
     Unix.sleep 1;
-    mon verbose pid humane oneshot stats
+    mon verbose pids humane oneshot stats
   | Ok lines ->
     let default d = function
       | None -> d
@@ -79,11 +79,12 @@ let rec mon verbose pid humane oneshot stats : (unit, Rresult.R.msg) result =
     let lines = get_stats lines in
     let crashes = lookup "unique_crashes" lines in
     let cycles = lookup "cycles_done" lines in
+    let pid = List.hd pids in (* TODO lol nope *)
     match lookup_pid lines, pid with
     | None, _ -> Error (`Msg (Format.asprintf
                              "no PID for the fuzzer found in stats file %a"
                              Fpath.pp stats))
-    | Some file_pid, Some pid when (0 <> compare file_pid pid) ->
+    | Some file_pid, pid when (0 <> compare file_pid pid) ->
       (* fuzzer_stats look to be from another run, not the thing we launched
          or were asked to monitor. *)
       (* for now, just wait a bit and try again, but TODO this can lead us to
@@ -93,7 +94,7 @@ let rec mon verbose pid humane oneshot stats : (unit, Rresult.R.msg) result =
         Ok ()
       end else begin
         Unix.sleep 1;
-        mon verbose (Some pid) humane oneshot stats
+        mon verbose pids humane oneshot stats
       end
     | Some file_pid, _ -> (* either no pid specified or it matches the one in the file *)
       match (default 0 crashes, default 0 cycles) with
@@ -101,7 +102,7 @@ let rec mon verbose pid humane oneshot stats : (unit, Rresult.R.msg) result =
         print_stats verbose lines;
         if oneshot then Ok () else begin
           Unix.sleep 60;
-          mon verbose pid humane oneshot stats
+          mon verbose pids humane oneshot stats
         end
       | 0, cycles ->
         Printf.printf "%d cycles completed and no crashes found\n%!" cycles;

@@ -1,11 +1,3 @@
-let crash_detector pids _ =
-  (* we received SIGCHLD -- at least one of the pids we launched has completed.
-     if more are still running, there's no reason to panic,
-     but if none remain, we should clean up as if we'd received SIGTERM. *)
-  (* we can waitpid with WNOHANG in a loop I guess? *)
-  (* an annoying thing is we can't return anything, so the pid table still has
-     to be a gross global mutable thing *)
-  ()
 
 let program =
   let obligatory_file = Cmdliner.Arg.(some non_dir_file) in
@@ -54,12 +46,6 @@ let got_cpu =
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-gotcpu"
                 & info ["got_cpu"] ~docv:"CPUCHECK" ~doc)
 
-
-let parallelize ~primary num =
-  match primary with
-  | false -> ["-S"; string_of_int num]
-  | true -> ["-M"; string_of_int num]
-
 let try_another_core cpu =
   let cmd = Bos.Cmd.v cpu in
   Bos.OS.Cmd.(match run_out cmd |> out_null with
@@ -74,7 +60,24 @@ let is_running pid =
       | Ok _ -> Ok false
       | Error e -> Error e)
 
+let pids = ref []
+
+let crash_detector pids _ =
+  (* we received SIGCHLD -- at least one of the pids we launched has completed.
+     if more are still running, there's no reason to panic,
+     but if none remain, we should clean up as if we'd received SIGTERM. *)
+  (* we can waitpid with WNOHANG in a loop I guess? *)
+  (* an annoying thing is we can't return anything, so the pid table still has
+     to be a gross global mutable thing *)
+  ()
+
+
 let spawn verbosity primary id fuzzer input output program program_argv : int =
+  let parallelize ~primary num =
+    match primary with
+    | false -> ["-S"; string_of_int num]
+    | true -> ["-M"; string_of_int num]
+  in
   let argv = [fuzzer; "-i"; (Fpath.to_string input);
               "-o"; (Fpath.to_string output); ]
               @ (parallelize ~primary id) @
@@ -122,14 +125,15 @@ let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
       let primary_pid = spawn verbosity primary id fuzzer input output program program_argv in
       match parallel with
       | false ->
-        Common.mon verbosity [primary_pid] false false Fpath.(output /
-                                                              string_of_int id /
-                                                              "fuzzer_stats")
+        pids := [primary_pid];
+        Common.mon verbosity pids false false
+          Fpath.(output / string_of_int id / "fuzzer_stats")
       | true ->
         match fill_cores ~primary_pid id with
         | Error e -> Error e
         | Ok pid_list ->
-        Common.mon verbosity pid_list false false Fpath.(output / "fuzzer_stats")
+          pids := pid_list;
+          Common.mon verbosity pids false false Fpath.(output / "fuzzer_stats")
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer

@@ -90,7 +90,7 @@ let rec mon verbose pids humane oneshot stats : (unit, Rresult.R.msg) result =
     let lines = Parse.get_stats lines in
     let crashes = Parse.lookup "unique_crashes" lines in
     let cycles = Parse.lookup "cycles_done" lines in
-    let pid = List.hd pids in (* TODO lol nope *)
+    let pid = List.hd !pids in (* TODO lol nope *)
     match Parse.lookup_pid lines, pid with
     | None, _ -> Error (`Msg (Format.asprintf
                                 "no PID for the fuzzer found in stats file %a"

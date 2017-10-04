@@ -1,3 +1,12 @@
+let crash_detector pids _ =
+  (* we received SIGCHLD -- at least one of the pids we launched has completed.
+     if more are still running, there's no reason to panic,
+     but if none remain, we should clean up as if we'd received SIGTERM. *)
+  (* we can waitpid with WNOHANG in a loop I guess? *)
+  (* an annoying thing is we can't return anything, so the pid table still has
+     to be a gross global mutable thing *)
+  ()
+
 let program =
   let obligatory_file = Cmdliner.Arg.(some non_dir_file) in
   let doc = "Fuzz this program.  (Ideally it's a Crowbar test.)" in
@@ -36,7 +45,7 @@ let output_dir =
 let fuzzer =
   let doc = "The fuzzer to invoke." in
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-fuzz"
-                & info ["fuzzer"] ~docv:"FUZZER" ~doc)
+                & info ["fuzzer"] ~docv:"FUZZER" ~doc ~env:(env_var "FUZZER"))
 
 let got_cpu =
   let doc = "The command to run to see whether more cores are available.  It \

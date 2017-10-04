@@ -1,4 +1,3 @@
-
 let program =
   let obligatory_file = Cmdliner.Arg.(some non_dir_file) in
   let doc = "Fuzz this program.  (Ideally it's a Crowbar test.)" in
@@ -46,6 +45,44 @@ let got_cpu =
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-gotcpu"
                 & info ["got_cpu"] ~docv:"CPUCHECK" ~doc)
 
+let pids = ref []
+
+let crash_detector signal =
+  (* we received SIGCHLD -- at least one of the pids we launched has completed.
+     if more are still running, there's no reason to panic,
+     but if none remain, we should clean up as if we'd received SIGTERM. *)
+  (* we can waitpid with WNOHANG I guess? *)
+  (* an annoying thing is we can't return anything, so the pid table still has
+     to be a gross global mutable thing *)
+  (* try 0 (only children in our process group) instead of -1 (any child) *)
+  (* nope, that's even worse - afl-fuzz calls setsid, so that means we only get
+     the stuff we *don't* want to catch *)
+  Printf.printf "something signalled: %d\n%!" signal;
+  List.iter (fun pid ->
+      Printf.printf "was it pid %d?\n%!" pid;
+      match Unix.(waitpid [WNOHANG] pid) with
+      | 0, _ -> Printf.printf "nope\n%!"; () (* pid 0 means nothing was waiting *)
+      | pid, _ when pid < 0 -> Printf.printf "an error: %d\n%!" pid; ()
+      | pid, WSTOPPED d -> Printf.printf "yep, it was stopped: %d\n%!" d; ()
+      | pid, WSIGNALED d -> Printf.printf "yep, it was signalled: %d\n%!" d; ()
+      | pid, WEXITED code ->
+        let other_pids = List.filter ((<>) pid) !pids in
+        pids := other_pids;
+        match !pids, code with
+        | [], 0 ->
+          Printf.printf "The last (or only) fuzzer (%d) has finished!\n%!" pid;
+          (* print the crashes!!! *)
+          exit 0
+        | [], d ->
+          Printf.printf "The last (or only) fuzzer (%d) has failed with code %d\n%!"
+            pid d;
+          (* failing here seems like the wrong thing to do, so let's see what
+             happens if we don't *)
+          exit 1
+        | _, _ -> Printf.printf "yes, but I don't care\n%!"; ()
+    ) !pids
+
+
 let try_another_core cpu =
   let cmd = Bos.Cmd.v cpu in
   Bos.OS.Cmd.(match run_out cmd |> out_null with
@@ -60,19 +97,8 @@ let is_running pid =
       | Ok _ -> Ok false
       | Error e -> Error e)
 
-let pids = ref []
 
-let crash_detector pids _ =
-  (* we received SIGCHLD -- at least one of the pids we launched has completed.
-     if more are still running, there's no reason to panic,
-     but if none remain, we should clean up as if we'd received SIGTERM. *)
-  (* we can waitpid with WNOHANG in a loop I guess? *)
-  (* an annoying thing is we can't return anything, so the pid table still has
-     to be a gross global mutable thing *)
-  ()
-
-
-let spawn verbosity primary id fuzzer input output program program_argv : int =
+let spawn verbosity env primary id fuzzer input output program program_argv : int =
   let parallelize ~primary num =
     match primary with
     | false -> ["-S"; string_of_int num]
@@ -84,30 +110,28 @@ let spawn verbosity primary id fuzzer input output program program_argv : int =
               ["--"; program; ] @ program_argv @ ["@@"] in
   if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
     String.concat " " argv;
-  let null_fd = Unix.openfile (Fpath.to_string Bos.OS.File.null) [] 0o000 in
-  let pid = Spawn.spawn ~stdout:null_fd ~prog:fuzzer ~argv () in
-  Unix.close null_fd;
+  (* TODO: restore quietness when -v=0 *)
+  let pid = Spawn.spawn ~env:("AFL_NO_UI=1"::env) ~prog:fuzzer ~argv () in
+  Unix.sleep 2; (* give the spawned afl-fuzz a minute to finish its cpu check*)
   if (List.length verbosity) > 0 then
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
 
 let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
   : (unit, Rresult.R.msg) result =
+  let env = Unix.environment () |> Array.to_list in
   let fill_cores ~primary_pid start_id =
-    let rec launch_more i (l : int list) : int list =
+    let rec launch_more i : unit =
       match try_another_core got_cpu with
-      | false -> l
-      | true -> launch_more (i+1) @@
-        spawn verbosity false i fuzzer input output program program_argv :: l 
+      | false -> ()
+      | true ->
+        pids :=
+          (spawn verbosity env false i fuzzer input output program program_argv) ::
+          !pids;
+        launch_more (i+1)
     in
-    match is_running primary_pid with
-    | Error e -> Error e
-    | Ok false ->
-      let fail = Printf.sprintf "fuzzer (PID %d) died :(\n%!" primary_pid in
-      Error (`Msg fail)
-    | Ok true ->
-      let other_pids = launch_more (start_id + 1) [] in
-      Ok (primary_pid :: other_pids)
+    launch_more (start_id + 1);
+    Ok ()
     (* monitor the process we just started with `mon`, and kill it when useful
          results have been obtained *)
   in
@@ -121,25 +145,25 @@ let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
       Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
     | Ok true ->
       (* always start at least one afl-fuzz *)
+      Sys.(set_signal sigchld (Signal_handle crash_detector));
       let primary, id = true, 1 in
-      let primary_pid = spawn verbosity primary id fuzzer input output program program_argv in
+      let primary_pid = spawn verbosity env primary id fuzzer input output program program_argv in
+      pids := [primary_pid];
       match parallel with
       | false ->
-        pids := [primary_pid];
         Common.mon verbosity pids false false
           Fpath.(output / string_of_int id / "fuzzer_stats")
       | true ->
         match fill_cores ~primary_pid id with
         | Error e -> Error e
-        | Ok pid_list ->
-          pids := pid_list;
+        | Ok () ->
           Common.mon verbosity pids false false Fpath.(output / "fuzzer_stats")
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer
                             $ parallel $ got_cpu (* bun/mon args *)
-                            $ input_dir $ output_dir (* fuzzer flags *)
-                            $ program $ program_argv)
+                            $ input_dir $ output_dir
+                            $ program $ program_argv) (* fuzzer flags *)
 
 let bun_info =
   let doc = "invoke afl-fuzz on a program in a CI-friendly way" in

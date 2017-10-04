@@ -111,7 +111,6 @@ let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
       (* always start at least one afl-fuzz *)
       let primary, id = true, 1 in
       let primary_pid = spawn verbosity primary id fuzzer input output program program_argv in
-      Sys.(set_signal sigchld (Signal_handle (fun _ -> Printf.printf "sigchld")));
       match parallel with
       | false ->
         Common.mon verbosity [primary_pid] false false Fpath.(output /

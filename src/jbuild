@@ -13,4 +13,4 @@
             "--input=../../.aliases/test/input"
             "--output=output"
             "--"
-            ${bin:mon} "-H" "--oneshot"))))
+            ${bin:mon} "--oneshot"))))

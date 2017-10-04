@@ -67,7 +67,7 @@ let print_crashes output_dir =
 let rec mon verbose pids humane oneshot stats : (unit, Rresult.R.msg) result =
   match Bos.OS.File.read_lines stats with
   | Error (`Msg e) ->
-    (* TODO: blocking on this forever is probably not a great call *)
+    (* if at least one pid is running, this is probably just a race *)
     Printf.eprintf "%s\n%!" e;
     Unix.sleep 1;
     mon verbose pids humane oneshot stats

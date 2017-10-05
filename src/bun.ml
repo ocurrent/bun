@@ -83,15 +83,6 @@ let try_another_core cpu =
       | Ok (_, (_, `Exited 0)) -> true
       | Ok _ | Error _ -> false)
 
-let is_running pid =
-  let cmd = Bos.Cmd.(v "pmap" % string_of_int pid) in
-  Bos.OS.Cmd.(match run_out cmd |> out_null with
-      | Ok (_, (_, `Exited 0)) -> Ok true
-      | Ok (_, (_, `Exited 42)) -> Ok false
-      | Ok _ -> Ok false
-      | Error e -> Error e)
-
-
 let spawn verbosity env primary id fuzzer input output program program_argv : int =
   let parallelize ~primary num =
     match primary with

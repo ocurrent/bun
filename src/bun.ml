@@ -48,24 +48,18 @@ let got_cpu =
 
 let pids = ref []
 
-let crash_detector signal =
+let crash_detector _sigchld =
   (* we received SIGCHLD -- at least one of the pids we launched has completed.
      if more are still running, there's no reason to panic,
      but if none remain, we should clean up as if we'd received SIGTERM. *)
-  (* we can waitpid with WNOHANG I guess? *)
-  (* an annoying thing is we can't return anything, so the pid table still has
-     to be a gross global mutable thing *)
-  (* try 0 (only children in our process group) instead of -1 (any child) *)
-  (* nope, that's even worse - afl-fuzz calls setsid, so that means we only get
-     the stuff we *don't* want to catch *)
-  Printf.printf "something signalled: %d\n%!" signal;
+  (* (currently we know it's sigchld because that's the only signal we installed
+     this handler for, but if that changes we'll need to care what we were
+     passed) *)
   List.iter (fun pid ->
-      Printf.printf "was it pid %d?\n%!" pid;
       match Unix.(waitpid [WNOHANG] pid) with
-      | 0, _ -> Printf.printf "nope\n%!"; () (* pid 0 means nothing was waiting *)
-      | pid, _ when pid < 0 -> Printf.printf "an error: %d\n%!" pid; ()
-      | pid, WSTOPPED d -> Printf.printf "yep, it was stopped: %d\n%!" d; ()
-      | pid, WSIGNALED d -> Printf.printf "yep, it was signalled: %d\n%!" d; ()
+      | 0, _ -> () (* pid 0 means nothing was waiting *)
+      | pid, _ when pid < 0 -> (* an error *) ()
+      | _pid, WSTOPPED _ | _pid, WSIGNALED _ -> (* we don't care *) ()
       | pid, WEXITED code ->
         let other_pids = List.filter ((<>) pid) !pids in
         pids := other_pids;
@@ -77,10 +71,9 @@ let crash_detector signal =
         | [], d ->
           Printf.printf "The last (or only) fuzzer (%d) has failed with code %d\n%!"
             pid d;
-          (* failing here seems like the wrong thing to do, so let's see what
-             happens if we don't *)
+          (* print the crashes!!! *)
           exit 1
-        | _, _ -> Printf.printf "yes, but I don't care\n%!"; ()
+        | _, _ -> (* other fuzzers are still active, no action needed *) ()
     ) !pids
 
 

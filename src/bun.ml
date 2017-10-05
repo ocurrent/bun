@@ -124,8 +124,6 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
     in
     launch_more (start_id + 1);
     Ok ()
-    (* monitor the process we just started with `mon`, and kill it when useful
-         results have been obtained *)
   in
   match Bos.OS.Dir.create output with
   | Error e -> Error e
@@ -141,6 +139,8 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       let primary, id = true, 1 in
       let primary_pid = spawn verbosity env primary id fuzzer input output program program_argv in
       pids := [primary_pid];
+      (* monitor the process we just started with `mon`, and kill it when useful
+         results have been obtained *)
       match single_core with
       | true ->
         Common.mon verbosity pids false false

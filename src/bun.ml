@@ -12,9 +12,9 @@ let program_argv =
   Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"PROGRAM_ARGS"
                   ~doc)
 
-let parallel =
-  let doc = "Start more fuzzer instances in parallel, if CPU is available." in
-  Cmdliner.Arg.(value & flag & info ["p"] ~docv:"PARALLEL" ~doc)
+let single_core =
+  let doc = "Start only one fuzzer instance, even if more CPU cores are available." in
+  Cmdliner.Arg.(value & flag & info ["s"; "single-core"] ~docv:"SINGLE_CORE" ~doc)
 
 let verbosity =
   let doc = "Report on intermediate progress.  -vv passes through stdout from \
@@ -109,10 +109,10 @@ let spawn verbosity env primary id fuzzer input output program program_argv : in
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
 
-let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
+let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
   : (unit, Rresult.R.msg) result =
   let env = Unix.environment () |> Array.to_list in
-  let fill_cores ~primary_pid start_id =
+  let fill_cores start_id =
     let rec launch_more i : unit =
       match try_another_core got_cpu with
       | false -> ()
@@ -141,19 +141,19 @@ let fuzz verbosity fuzzer parallel got_cpu input output program program_argv
       let primary, id = true, 1 in
       let primary_pid = spawn verbosity env primary id fuzzer input output program program_argv in
       pids := [primary_pid];
-      match parallel with
-      | false ->
+      match single_core with
+      | true ->
         Common.mon verbosity pids false false
           Fpath.(output / string_of_int id / "fuzzer_stats")
-      | true ->
-        match fill_cores ~primary_pid id with
+      | false ->
+        match fill_cores id with
         | Error e -> Error e
         | Ok () ->
           Common.mon verbosity pids false false Fpath.(output / "fuzzer_stats")
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer
-                            $ parallel $ got_cpu (* bun/mon args *)
+                            $ single_core $ got_cpu (* bun/mon args *)
                             $ input_dir $ output_dir
                             $ program $ program_argv) (* fuzzer flags *)
 

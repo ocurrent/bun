@@ -17,7 +17,8 @@ let parallel =
   Cmdliner.Arg.(value & flag & info ["p"] ~docv:"PARALLEL" ~doc)
 
 let verbosity =
-  let doc = "Report on intermediate progress." in
+  let doc = "Report on intermediate progress.  -vv passes through stdout from \
+  the fuzzer" in
   Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
 
 let fpath_conv = Cmdliner.Arg.conv Fpath.(of_string, pp)
@@ -111,7 +112,14 @@ let spawn verbosity env primary id fuzzer input output program program_argv : in
   if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
     String.concat " " argv;
   (* TODO: restore quietness when -v=0 *)
-  let pid = Spawn.spawn ~env:("AFL_NO_UI=1"::env) ~prog:fuzzer ~argv () in
+  let stdout = match (List.length verbosity) > 1 with
+    | true ->
+      Unix.stdout
+    | false ->
+      Unix.openfile (Fpath.to_string Bos.OS.File.null) [] 0o000
+  in
+  let pid = Spawn.spawn ~env:("AFL_NO_UI=1"::env) ~stdout
+      ~prog:fuzzer ~argv () in
   Unix.sleep 2; (* give the spawned afl-fuzz a minute to finish its cpu check*)
   if (List.length verbosity) > 0 then
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;

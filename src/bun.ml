@@ -48,7 +48,7 @@ let got_cpu =
 
 let pids = ref []
 
-let crash_detector _sigchld =
+let crash_detector output _sigchld =
   (* we received SIGCHLD -- at least one of the pids we launched has completed.
      if more are still running, there's no reason to panic,
      but if none remain, we should clean up as if we'd received SIGTERM. *)
@@ -66,12 +66,12 @@ let crash_detector _sigchld =
         match !pids, code with
         | [], 0 ->
           Printf.printf "The last (or only) fuzzer (%d) has finished!\n%!" pid;
-          (* print the crashes!!! *)
+          Common.Print.print_crashes output |> Rresult.R.get_ok;
           exit 0
         | [], d ->
           Printf.printf "The last (or only) fuzzer (%d) has failed with code %d\n%!"
             pid d;
-          (* print the crashes!!! *)
+          Common.Print.print_crashes output |> Rresult.R.get_ok;
           exit 1
         | _, _ -> (* other fuzzers are still active, no action needed *) ()
     ) !pids
@@ -83,15 +83,15 @@ let how_many_cores cpu =
   let cpucheck = Bos.Cmd.v cpu in
   let more_processes = Bos.Cmd.(v "grep" % "more processes on") in
   match Bos.OS.Cmd.(run_out ~err:err_run_out cpucheck |> out_run_in) with
-  | Error e -> 0
+  | Error _ -> 0
   | Ok cpucheck_output ->
     let open Bos.OS.Cmd in
     match run_io more_processes cpucheck_output |> to_lines with
-    | Error e -> 0
+    | Error _ -> 0
     | Ok l ->
     try
       match List.map (fun l -> Astring.String.cut ~sep:"more processes on " l) l
-            |> List.find (function | Some a -> true | None -> false) with
+            |> List.find (function | Some _ -> true | None -> false) with
       | None -> 0
       | Some (_, cores) -> Astring.String.fields cores |> List.hd |> int_of_string
     with
@@ -156,7 +156,7 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
     | Ok true ->
       (* always start at least one afl-fuzz *)
-      Sys.(set_signal sigchld (Signal_handle crash_detector));
+      Sys.(set_signal sigchld (Signal_handle (crash_detector output)));
       let primary, id = true, 1 in
       let primary_pid = spawn verbosity env primary id fuzzer input output program program_argv in
       pids := [primary_pid];

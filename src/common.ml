@@ -84,10 +84,11 @@ let rec mon verbose pids humane oneshot output : (unit, Rresult.R.msg) result =
                     change\n%!";
     Unix.sleep 1;
     mon verbose pids humane oneshot output
-  | Ok stats ->
+  | Ok _ ->
     (* the caller will know if all children have died. *)
-    (* without management this is pretty much replicating afl-whatsup; there
-       seems not to be any reason not to just run that *)
+    (* no compelling reason to reimplement afl-whatsup now that we found the
+       right env vars to make the afl-fuzz instances do the right thing,
+       so let's just run that *)
     let open Rresult in
     Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output) >>= fun () ->
     Unix.sleep 60;

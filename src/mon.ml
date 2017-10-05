@@ -12,7 +12,7 @@ let stats =
   let doc = "Stats file to monitor.  It should be in an afl-fuzz output directory." in
   Cmdliner.Arg.(required & pos 0 (some fpath_conv) None & info [] ~docv:"STATS" ~doc)
 
-let pids = ref []
+let pids : int list ref = ref []
 
 let mon_t = Cmdliner.Term.(const Common.mon
                            $ verbosity

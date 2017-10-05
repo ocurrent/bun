@@ -71,51 +71,24 @@ module Print = struct
         execs paths stability
 end
 
-let rec mon verbose pids humane oneshot stats : (unit, Rresult.R.msg) result =
-  match Bos.OS.File.read_lines stats with
+let rec mon verbose pids humane oneshot output : (unit, Rresult.R.msg) result =
+  match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
   | Error (`Msg e) ->
-    (* if at least one pid is running, this is probably just a race *)
+    (* this is probably just a race -- keep trying *)
+    (* (but TODO retry-bound this and terminate so we don't keep trying forever) *)
     Printf.eprintf "%s\n%!" e;
     Unix.sleep 1;
-    mon verbose pids humane oneshot stats
-  | Ok lines ->
-    let default d = function
-      | None -> d
-      | Some (_, p) -> try int_of_string p with Invalid_argument _ -> d
-    in
-    let lines = Parse.get_stats lines in
-    let crashes = Parse.lookup "unique_crashes" lines in
-    let cycles = Parse.lookup "cycles_done" lines in
-    let pid = List.hd !pids in (* TODO lol nope *)
-    match Parse.lookup_pid lines, pid with
-    | None, _ -> Error (`Msg (Format.asprintf
-                                "no PID for the fuzzer found in stats file %a"
-                                Fpath.pp stats))
-    | Some file_pid, pid when (0 <> compare file_pid pid) ->
-      (* fuzzer_stats look to be from another run, not the thing we launched
-         or were asked to monitor. *)
-      (* for now, just wait a bit and try again, but TODO this can lead us to
-         block forever if we were supposed to be monitoring this process... *)
-      if humane && oneshot then begin
-        Print.print_stats verbose lines;
-        Ok ()
-      end else begin
-        Unix.sleep 1;
-        mon verbose pids humane oneshot stats
-      end
-    | Some file_pid, _ -> (* either no pid specified or it matches the one in the file *)
-      match (default 0 crashes, default 0 cycles) with
-      | 0, 0 ->
-        Print.print_stats verbose lines;
-        if oneshot then Ok () else begin
-          Unix.sleep 60;
-          mon verbose pids humane oneshot stats
-        end
-      | 0, cycles ->
-        Printf.printf "%d cycles completed and no crashes found\n%!" cycles;
-        if humane then Ok () else Control.try_kill file_pid
-      | _, _ ->
-        let output_dir = Fpath.parent stats in
-        let _ = Print.print_crashes output_dir in
-        Printf.printf "Killing %d...\n%!" file_pid;
-        if humane then Ok () else Control.try_kill file_pid
+    mon verbose pids humane oneshot output
+  | Ok [] ->
+    Printf.eprintf "No fuzzer stats files found - waiting on the world to \
+                    change\n%!";
+    Unix.sleep 1;
+    mon verbose pids humane oneshot output
+  | Ok stats ->
+    (* the caller will know if all children have died. *)
+    (* without management this is pretty much replicating afl-whatsup; there
+       seems not to be any reason not to just run that *)
+    let open Rresult in
+    Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output) >>= fun () ->
+    Unix.sleep 60;
+    mon verbose pids humane oneshot output

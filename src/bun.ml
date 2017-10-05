@@ -27,12 +27,12 @@ let input_dir =
   let doc = "Cache of inputs to use in fuzzing the program.  Will be passed \
   through to the program as the input parameter." in
   Cmdliner.Arg.(value & opt fpath_conv (Fpath.v "input")
-                & info ["input"] ~docv:"INPUT" ~doc)
+                & info ["i"; "input"] ~docv:"INPUT" ~doc)
 
 let output_dir =
   let doc = "Where to instruct the fuzzer to put its output." in
   Cmdliner.Arg.(value & opt fpath_conv (Fpath.v "output")
-                & info ["output"] ~docv:"OUTPUT" ~doc)
+                & info ["o"; "output"] ~docv:"OUTPUT" ~doc)
 
 let fuzzer =
   let doc = "The fuzzer to invoke." in
@@ -116,8 +116,11 @@ let spawn verbosity env primary id fuzzer input output program program_argv : in
     | false ->
       Unix.openfile (Fpath.to_string Bos.OS.File.null) [] 0o000
   in
-  let pid = Spawn.spawn ~env:("AFL_NO_UI=1"::env) ~stdout
-      ~prog:fuzzer ~argv () in
+  (* see afl-latest's docs/env_variables.txt for information on these --
+     the variables we pass ask AFL to finish after it's "done" (the cycle
+     counter would turn green in the UI) or it's found a crash *)
+  let env = "AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::"AFL_BENCH_UNTIL_CRASH=1"::env in
+  let pid = Spawn.spawn ~env ~stdout ~prog:fuzzer ~argv () in
   if (List.length verbosity) > 0 then
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
@@ -161,13 +164,13 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
          results have been obtained *)
       match single_core with
       | true ->
-        Common.mon verbosity pids false false
-          Fpath.(output / string_of_int id / "fuzzer_stats")
+        Common.mon verbosity pids false false output
       | false ->
+        Unix.sleep 1; (* make sure other CPU detection doesn't stomp primary *)
         match fill_cores id with
         | Error e -> Error e
         | Ok () ->
-          Common.mon verbosity pids false false Fpath.(output / "fuzzer_stats")
+          Common.mon verbosity pids false false output
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer

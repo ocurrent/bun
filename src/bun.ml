@@ -77,11 +77,26 @@ let crash_detector _sigchld =
     ) !pids
 
 
-let try_another_core cpu =
-  let cmd = Bos.Cmd.v cpu in
-  Bos.OS.Cmd.(match run_out cmd |> out_null with
-      | Ok (_, (_, `Exited 0)) -> true
-      | Ok _ | Error _ -> false)
+let how_many_cores cpu =
+  (* The return code will tell us whether *any* cores are free, which is
+     helpful, but we'd like also to know *how many* are free. *)
+  let cpucheck = Bos.Cmd.v cpu in
+  let more_processes = Bos.Cmd.(v "grep" % "more processes on") in
+  match Bos.OS.Cmd.(run_out ~err:err_run_out cpucheck |> out_run_in) with
+  | Error e -> 0
+  | Ok cpucheck_output ->
+    let open Bos.OS.Cmd in
+    match run_io more_processes cpucheck_output |> to_lines with
+    | Error e -> 0
+    | Ok l ->
+    try
+      match List.map (fun l -> Astring.String.cut ~sep:"more processes on " l) l
+            |> List.find (function | Some a -> true | None -> false) with
+      | None -> 0
+      | Some (_, cores) -> Astring.String.fields cores |> List.hd |> int_of_string
+    with
+    | Not_found | Invalid_argument _ | Failure _ -> 0
+
 
 let spawn verbosity env primary id fuzzer input output program program_argv : int =
   let parallelize ~primary num =
@@ -103,7 +118,6 @@ let spawn verbosity env primary id fuzzer input output program program_argv : in
   in
   let pid = Spawn.spawn ~env:("AFL_NO_UI=1"::env) ~stdout
       ~prog:fuzzer ~argv () in
-  Unix.sleep 2; (* give the spawned afl-fuzz a minute to finish its cpu check*)
   if (List.length verbosity) > 0 then
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
@@ -111,17 +125,22 @@ let spawn verbosity env primary id fuzzer input output program program_argv : in
 let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
   : (unit, Rresult.R.msg) result =
   let env = Unix.environment () |> Array.to_list in
+  let max =
+    match single_core, how_many_cores got_cpu with
+    | true, n when n > 1 -> 1
+    | _, n -> n
+  in
   let fill_cores start_id =
-    let rec launch_more i : unit =
-      match try_another_core got_cpu with
+    let rec launch_more max i : unit =
+      match i <= max with
       | false -> ()
       | true ->
         pids :=
           (spawn verbosity env false i fuzzer input output program program_argv) ::
           !pids;
-        launch_more (i+1)
+        launch_more max (i+1)
     in
-    launch_more (start_id + 1);
+    launch_more max (start_id + 1);
     Ok ()
   in
   match Bos.OS.Dir.create output with

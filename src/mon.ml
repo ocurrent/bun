@@ -5,18 +5,19 @@ let verbosity =
   Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
 
 let oneshot =
-  let doc = "Run once and report, rather than polling the stats file." in
+  let doc = "Run once and report, rather than continually monitoring forever." in
   Cmdliner.Arg.(value & flag & info ["oneshot"] ~docv:"ONESHOT" ~doc)
 
-let stats =
-  let doc = "Stats file to monitor.  It should be in an afl-fuzz output directory." in
-  Cmdliner.Arg.(required & pos 0 (some fpath_conv) None & info [] ~docv:"STATS" ~doc)
-
-let pids : int list ref = ref [] 
+let directory =
+  let doc = "Directory to monitor for AFL stats (should have been given as -o \
+             to some afl-fuzz or bun invocations)" in
+  Cmdliner.Arg.(required & pos 0 (some fpath_conv) None & info []
+                  ~docv:"DIRECTORY" ~doc)
 
 let mon_t = Cmdliner.Term.(const Common.mon
                            $ verbosity
-                           $ const pids $ const true $ oneshot $ stats)
+                           $ const (ref [] : int list ref)
+                           $ oneshot $ directory)
 
 let mon_info =
   let doc = "monitor a running afl-fuzz instance, and kill it once it's tried \

@@ -164,13 +164,13 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
          results have been obtained *)
       match single_core with
       | true ->
-        Common.mon verbosity pids false false output
+        Common.mon verbosity pids false output
       | false ->
         Unix.sleep 1; (* make sure other CPU detection doesn't stomp primary *)
         match fill_cores id with
         | Error e -> Error e
         | Ok () ->
-          Common.mon verbosity pids false false output
+          Common.mon verbosity pids false output
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer

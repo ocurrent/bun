@@ -71,20 +71,20 @@ module Print = struct
         execs paths stability
 end
 
-let rec mon verbose pids humane oneshot output : (unit, Rresult.R.msg) result =
-  match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
-  | Error (`Msg e) ->
+let rec mon verbose pids oneshot output : (unit, Rresult.R.msg) result =
+  match oneshot, Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
+  | false, Error (`Msg e) ->
     (* this is probably just a race -- keep trying *)
     (* (but TODO retry-bound this and terminate so we don't keep trying forever) *)
     Printf.eprintf "%s\n%!" e;
     Unix.sleep 1;
-    mon verbose pids humane oneshot output
-  | Ok [] ->
+    mon verbose pids oneshot output
+  | false, Ok [] ->
     Printf.eprintf "No fuzzer stats files found - waiting on the world to \
                     change\n%!";
     Unix.sleep 1;
-    mon verbose pids humane oneshot output
-  | Ok _ ->
+    mon verbose pids oneshot output
+  | false, Ok _ ->
     (* the caller will know if all children have died. *)
     (* no compelling reason to reimplement afl-whatsup now that we found the
        right env vars to make the afl-fuzz instances do the right thing,
@@ -92,4 +92,8 @@ let rec mon verbose pids humane oneshot output : (unit, Rresult.R.msg) result =
     let open Rresult in
     Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output) >>= fun () ->
     Unix.sleep 60;
-    mon verbose pids humane oneshot output
+    mon verbose pids oneshot output
+  | true, Ok _ ->
+    Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output)
+  | true, Error e -> Error e
+

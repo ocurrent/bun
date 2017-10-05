@@ -13,11 +13,9 @@ module Parse = struct
   let lookup_pid l = match lookup "fuzzer_pid" l with
     | None -> None
     | Some (_, pid) -> try Some (int_of_string pid) with Invalid_argument _ -> None
-
 end
 
 module Control = struct
-
   let get_base64 f =
     Bos.OS.Cmd.run_out @@
     Bos.Cmd.(v "base64" % (Fpath.to_string f)) |>
@@ -29,16 +27,14 @@ module Control = struct
     with
     | Invalid_argument _ -> Error (`Msg "fuzzer_pid is not a valid int; refusing \
                                          to kill")
-
 end
 
 module Print = struct
-
   let output_pasteable str id =
     Printf.sprintf "echo %s | base64 -d > crash_$(date -u +%%s).%d" str id
 
   let print_crashes output_dir =
-    let crashes = Fpath.(output_dir / "crashes" / "id$(file)" ) in
+    let crashes = Fpath.(output_dir / "$(dir)" / "crashes" / "id$(file)" ) in
     match Bos.OS.Path.matches crashes with
     | Error (`Msg e) ->
       Error (`Msg (Format.asprintf "Failure finding crashes in \

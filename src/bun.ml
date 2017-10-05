@@ -95,7 +95,6 @@ let spawn verbosity env primary id fuzzer input output program program_argv : in
               ["--"; program; ] @ program_argv @ ["@@"] in
   if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
     String.concat " " argv;
-  (* TODO: restore quietness when -v=0 *)
   let stdout = match (List.length verbosity) > 1 with
     | true ->
       Unix.stdout

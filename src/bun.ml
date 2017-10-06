@@ -93,10 +93,10 @@ let crash_detector output _sigchld =
                                                               pgroup *)
                     with Unix.Unix_error(Unix.ESRCH, _, _) ->
                      (* it's OK if it's already dead *) ()
-                ) other_pids;
-                Printf.printf "Crash (maybe lots!) discovered by pid %d; that's it for us!\n%!" pid;
-                Common.Print.print_crashes output |> Rresult.R.get_ok;
-                exit 0
+                  ) other_pids;
+                (* instead of trying to handle everything now, waitpid on the
+                   remaining stuff to make sure cleanup finishes successfully *)
+                ()
     ) !pids
 
 

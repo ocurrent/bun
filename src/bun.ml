@@ -51,17 +51,18 @@ let pids = ref []
 let crash_detector output _sigchld =
   (* we received SIGCHLD -- at least one of the pids we launched has completed.
      if more are still running, there's no reason to panic,
-     but if none remain, we should clean up as if we'd received SIGTERM. *)
+     but if none remain (or if the pid completed because it found a crash),
+     we should clean up as if we'd received SIGTERM. *)
   (* (currently we know it's sigchld because that's the only signal we installed
      this handler for, but if that changes we'll need to care what we were
      passed) *)
-  List.iter (fun pid ->
+  List.iter (fun (pid, _id) ->
       match Unix.(waitpid [WNOHANG] pid) with
       | 0, _ -> () (* pid 0 means nothing was waiting *)
       | pid, _ when pid < 0 -> (* an error *) ()
       | _pid, WSTOPPED _ | _pid, WSIGNALED _ -> (* we don't care *) ()
       | pid, WEXITED code ->
-        let other_pids = List.filter ((<>) pid) !pids in
+        let other_pids, our_pids = List.partition (fun i -> (<>) pid (fst i)) !pids in
         pids := other_pids;
         match !pids, code with
         | [], 0 ->
@@ -73,7 +74,24 @@ let crash_detector output _sigchld =
             pid d;
           Common.Print.print_crashes output |> Rresult.R.get_ok;
           exit 1
-        | _, _ -> (* other fuzzers are still active, no action needed *) ()
+        | _, _ ->
+          (* other fuzzers are still active, but if we've crashed, we should
+             still exit *)
+          (* see whether this pid found a crash *)
+          match List.assoc_opt pid our_pids with
+          | None -> () (* we can't look up whether this pid found a crash. we
+                          could check whether *any* pid found a crash, which
+                          might be preferable; TODO *)
+          | Some id ->
+            match Common.Parse.get_stats_lines ~id:(string_of_int id) output with
+            | Error _ | Ok [] -> () (* if it did, we can't know about it *)
+            | Ok lines -> match Common.Parse.(get_stats lines |> lookup_crashes) with
+              | Some 0 | None -> (* no crashes, so no further action needed here *) ()
+              | Some _ -> (* all done, then! *)
+                List.iter (fun (pid, _) -> Unix.kill Sys.sigterm pid) other_pids;
+                Printf.printf "Crash (maybe lots!) discovered by pid %d; that's it for us!\n%!" pid;
+                Common.Print.print_crashes output |> Rresult.R.get_ok;
+                exit 0
     ) !pids
 
 
@@ -139,7 +157,8 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       | false -> ()
       | true ->
         pids :=
-          (spawn verbosity env false i fuzzer input output program program_argv) ::
+          ((spawn verbosity env false i fuzzer input output program
+             program_argv), i) ::
           !pids;
         launch_more max (i+1)
     in
@@ -159,7 +178,7 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       Sys.(set_signal sigchld (Signal_handle (crash_detector output)));
       let primary, id = true, 1 in
       let primary_pid = spawn verbosity env primary id fuzzer input output program program_argv in
-      pids := [primary_pid];
+      pids := [primary_pid, id];
       match single_core with
       | true ->
         Common.mon verbosity pids false output

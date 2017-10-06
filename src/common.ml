@@ -10,35 +10,35 @@ module Parse = struct
     List.map (function hd::tl::[] -> hd,tl | _ -> assert false) lines
 
   let lookup s l = List.find_opt (fun (a,_) -> Astring.String.equal a s) l
-  let lookup_pid l = match lookup "fuzzer_pid" l with
+  let lookup_int s l = match lookup s l with
     | None -> None
-    | Some (_, pid) -> try Some (int_of_string pid) with Invalid_argument _ -> None
+    | Some (_, i) -> try Some (int_of_string i) with Invalid_argument _ -> None
+
+  let lookup_crashes l = lookup_int "unique_crashes" l
+  let lookup_pid l = lookup_int "fuzzer_pid" l
+
+  let get_crash_files ?(id = "$(file)") output_dir =
+    let crashes = Fpath.(output_dir / id / "crashes" / "id$(file)" ) in
+    Bos.OS.Path.matches crashes
+
+  let get_stats_lines ~id output =
+    Bos.OS.File.read_lines Fpath.(output / id / "fuzzer_stats")
 end
 
-module Control = struct
-  let get_base64 f =
+module Print = struct
+  let base64 f =
     Bos.OS.Cmd.run_out @@
     Bos.Cmd.(v "base64" % (Fpath.to_string f)) |>
     Bos.OS.Cmd.to_string
 
-  let try_kill pid =
-    try
-      Bos.OS.Cmd.run Bos.Cmd.(empty % "kill" % string_of_int pid)
-    with
-    | Invalid_argument _ -> Error (`Msg "fuzzer_pid is not a valid int; refusing \
-                                         to kill")
-end
-
-module Print = struct
   let output_pasteable str id =
     Printf.sprintf "echo %s | base64 -d > crash_$(date -u +%%s).%d" str id
 
   let print_crashes output_dir =
-    let crashes = Fpath.(output_dir / "$(dir)" / "crashes" / "id$(file)" ) in
-    match Bos.OS.Path.matches crashes with
+    match Parse.get_crash_files output_dir with
     | Error (`Msg e) ->
       Error (`Msg (Format.asprintf "Failure finding crashes in \
-                                    directory %a: %s" Fpath.pp crashes e))
+                                    directory %a: %s" Fpath.pp output_dir e))
     | Ok [] ->
       Printf.printf "No crashes found!\n%!"; Ok ()
     | Ok crashes ->
@@ -46,7 +46,7 @@ module Print = struct
                      reproduction:\n%!" (List.length crashes);
       try
         List.iteri (fun i c ->
-            match Control.get_base64 c with
+            match base64 c with
             | Error _ -> ()
             | Ok base64 ->
               Printf.printf "%s\n%!" (output_pasteable base64 i)
@@ -70,7 +70,7 @@ module Print = struct
         execs paths stability
 end
 
-let rec mon verbose pids oneshot output : (unit, Rresult.R.msg) result =
+let rec mon verbose (pids : (int * int) list ref) oneshot output : (unit, Rresult.R.msg) result =
   match oneshot, Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
   | false, Error (`Msg e) ->
     (* this is probably just a race -- keep trying *)

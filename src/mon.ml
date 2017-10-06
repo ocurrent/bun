@@ -16,7 +16,7 @@ let directory =
 
 let mon_t = Cmdliner.Term.(const Common.mon
                            $ verbosity
-                           $ const (ref [] : int list ref)
+                           $ const (ref [])
                            $ oneshot $ directory)
 
 let mon_info =

@@ -88,7 +88,12 @@ let crash_detector output _sigchld =
             | Ok lines -> match Common.Parse.(get_stats lines |> lookup_crashes) with
               | Some 0 | None -> (* no crashes, so no further action needed here *) ()
               | Some _ -> (* all done, then! *)
-                List.iter (fun (pid, _) -> Unix.kill Sys.sigterm pid) other_pids;
+                List.iter (fun (pid, _) ->
+                    try Unix.kill Sys.sigterm ((-1) * pid) (* kill the whole
+                                                              pgroup *)
+                    with Unix.Unix_error(Unix.ESRCH, _, _) ->
+                     (* it's OK if it's already dead *) ()
+                ) other_pids;
                 Printf.printf "Crash (maybe lots!) discovered by pid %d; that's it for us!\n%!" pid;
                 Common.Print.print_crashes output |> Rresult.R.get_ok;
                 exit 0

@@ -49,8 +49,7 @@ module Print = struct
             match Control.get_base64 c with
             | Error _ -> ()
             | Ok base64 ->
-              Printf.printf "---- %s -----\n%s\n-----\n%!"
-                (Fpath.to_string c) (output_pasteable base64 i)
+              Printf.printf "%s\n%!" (output_pasteable base64 i)
           ) crashes;
         Ok ()
       with

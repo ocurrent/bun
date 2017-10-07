@@ -22,15 +22,9 @@ Executing /usr/local/bin/afl-fuzz -i input -o out -- ./calendar @@
 /usr/local/bin/afl-fuzz launched: PID 23378
 fuzzing hard at 2000.00 executions per second, having already discovered 0 execution paths with 100.00% stability
 3 crashes found! Take a look; copy/paste to save for reproduction:
----- out/crashes/id:000001,sig:06,src:000000,op:havoc,rep:4 -----
 echo YWFhYWFhZABhYWFhYWFhYWFhYUBhYWFzVWY= | base64 -d > crash_$(date -u +%s).0
------
----- out/crashes/id:000000,sig:06,src:000000,op:havoc,rep:8 -----
 echo ZABUVFRUVFRUVFRUNlRUZFRUVFRUVFRUVFR9Zg== | base64 -d > crash_$(date -u +%s).1
------
----- out/crashes/id:000002,sig:06,src:000018+000005,op:splice,rep:32 -----
 echo Y2NjY2NjY1NjY2NjY2NjY2NjL+8= | base64 -d > crash_$(date -u +%s).2
------
 Killing 23378...
 ```
 

@@ -88,8 +88,11 @@ let rec mon verbose (pids : (int * int) list ref) oneshot output : (unit, Rresul
     (* no compelling reason to reimplement afl-whatsup now that we found the
        right env vars to make the afl-fuzz instances do the right thing,
        so let's just run that *)
-    let open Rresult in
-    Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output) >>= fun () ->
+    let () =
+      match Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output) with
+      | Error (`Msg e) -> Printf.eprintf "ignoring error %s\n%!" e
+      | Ok () -> ()
+    in
     Unix.sleep 60;
     mon verbose pids oneshot output
   | true, Ok _ ->

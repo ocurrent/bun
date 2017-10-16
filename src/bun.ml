@@ -94,8 +94,10 @@ let crash_detector output _sigchld =
                     with Unix.Unix_error(Unix.ESRCH, _, _) ->
                      (* it's OK if it's already dead *) ()
                   ) other_pids;
-                (* instead of trying to handle everything now, waitpid on the
-                   remaining stuff to make sure cleanup finishes successfully *)
+                (* instead of going immediately into cleanup and exit,
+                   go back to normal program flow so we have a chance to
+                   waitpid on the remaining stuff, so child processes can clean 
+                   up (including any write tasks they may have pending) *)
                 ()
     ) !pids
 

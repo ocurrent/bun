@@ -28,7 +28,7 @@ end
 module Print = struct
   let base64 f =
     Bos.OS.Cmd.run_out @@
-    Bos.Cmd.(v "base64" % (Fpath.to_string f)) |>
+    Bos.Cmd.(v "base64" % "-w" % "0" % (Fpath.to_string f)) |>
     Bos.OS.Cmd.to_string
 
   let output_pasteable str id =

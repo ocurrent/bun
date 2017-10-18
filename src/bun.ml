@@ -123,15 +123,11 @@ let how_many_cores cpu =
     | Not_found | Invalid_argument _ | Failure _ -> 0
 
 
-let spawn verbosity env primary id fuzzer input output program program_argv : int =
-  let parallelize ~primary num =
-    match primary with
-    | false -> ["-S"; string_of_int num]
-    | true -> ["-M"; string_of_int num]
-  in
+let spawn verbosity env id fuzzer input output program program_argv : int =
+  let parallelize num = ["-S"; string_of_int num] in
   let argv = [fuzzer; "-i"; (Fpath.to_string input);
               "-o"; (Fpath.to_string output); ]
-              @ (parallelize ~primary id) @
+              @ (parallelize id) @
               ["--"; program; ] @ program_argv @ ["@@"] in
   if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
     String.concat " " argv;
@@ -164,7 +160,7 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       | false -> ()
       | true ->
         pids :=
-          ((spawn verbosity env false i fuzzer input output program
+          ((spawn verbosity env i fuzzer input output program
              program_argv), i) ::
           !pids;
         launch_more max (i+1)
@@ -183,14 +179,14 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
     | Ok true ->
       (* always start at least one afl-fuzz *)
       Sys.(set_signal sigchld (Signal_handle (crash_detector output)));
-      let primary, id = true, 1 in
-      let primary_pid = spawn verbosity env primary id fuzzer input output program program_argv in
+      let id = 1 in
+      let primary_pid = spawn verbosity env id fuzzer input output program program_argv in
       pids := [primary_pid, id];
       match single_core with
       | true ->
         Common.mon verbosity pids false output
       | false ->
-        Unix.sleep 1; (* make sure other CPU detection doesn't stomp primary *)
+        Unix.sleep 1; (* make sure other CPU detection doesn't stomp ours *)
         match fill_cores id with
         | Error e -> Error e
         | Ok () ->

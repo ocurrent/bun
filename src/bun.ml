@@ -39,6 +39,11 @@ let fuzzer =
   Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-fuzz"
                 & info ["fuzzer"] ~docv:"FUZZER" ~doc ~env:(env_var "FUZZER"))
 
+let memory =
+  let doc = "Memory limit to pass to the fuzzer." in
+  Cmdliner.Arg.(value & opt int 200
+                & info ["mem"; "m"] ~docv:"MEMORY" ~doc ~env:(env_var "MEMORY"))
+
 let got_cpu =
   let doc = "The command to run to see whether more cores are available.  It \
              should exit with 0 if more cores are available for fuzzing,
@@ -123,9 +128,11 @@ let how_many_cores cpu =
     | Not_found | Invalid_argument _ | Failure _ -> 0
 
 
-let spawn verbosity env id fuzzer input output program program_argv : int =
+let spawn verbosity env id fuzzer memory input output program program_argv : int =
   let parallelize num = ["-S"; string_of_int num] in
-  let argv = [fuzzer; "-i"; (Fpath.to_string input);
+  let argv = [fuzzer;
+              "-m"; (string_of_int memory);
+              "-i"; (Fpath.to_string input);
               "-o"; (Fpath.to_string output); ]
               @ (parallelize id) @
               ["--"; program; ] @ program_argv @ ["@@"] in
@@ -146,7 +153,7 @@ let spawn verbosity env id fuzzer input output program program_argv : int =
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
 
-let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
+let fuzz verbosity fuzzer single_core got_cpu input output memory program program_argv
   : (unit, Rresult.R.msg) result =
   let env = Unix.environment () |> Array.to_list in
   let max =
@@ -160,7 +167,7 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       | false -> ()
       | true ->
         pids :=
-          ((spawn verbosity env i fuzzer input output program
+          ((spawn verbosity env i fuzzer memory input output program
              program_argv), i) ::
           !pids;
         launch_more max (i+1)
@@ -180,7 +187,8 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
       (* always start at least one afl-fuzz *)
       Sys.(set_signal sigchld (Signal_handle (crash_detector output)));
       let id = 1 in
-      let primary_pid = spawn verbosity env id fuzzer input output program program_argv in
+      let primary_pid = spawn verbosity env id fuzzer memory input output
+          program program_argv in
       pids := [primary_pid, id];
       match single_core with
       | true ->
@@ -195,7 +203,7 @@ let fuzz verbosity fuzzer single_core got_cpu input output program program_argv
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ fuzzer
                             $ single_core $ got_cpu (* bun/mon args *)
-                            $ input_dir $ output_dir
+                            $ input_dir $ output_dir $ memory
                             $ program $ program_argv) (* fuzzer flags *)
 
 let bun_info =

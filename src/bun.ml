@@ -53,14 +53,24 @@ let got_cpu =
 
 let pids = ref []
 
+let terminate_child_processes =
+  List.iter (fun (pid, _) ->
+      try Unix.kill Sys.sigterm ((-1) * pid) (* kill the whole pgroup *)
+      with Unix.Unix_error(Unix.ESRCH, _, _) -> () (* it's OK if it's already dead *)
+    )
+
+let term_handler output _sigterm =
+  Printf.printf "Terminating the remaining fuzzing processes in response to SIGTERM.\n";
+  Printf.printf "It's likely that this job could benefit from more fuzzing time \
+  - consider running it in an environment with more available cores or allowing \
+  the fuzzers more time to explore the state space, if possible.\n%!";
+  terminate_child_processes !pids
+
 let crash_detector output _sigchld =
   (* we received SIGCHLD -- at least one of the pids we launched has completed.
      if more are still running, there's no reason to panic,
      but if none remain (or if the pid completed because it found a crash),
      we should clean up as if we'd received SIGTERM. *)
-  (* (currently we know it's sigchld because that's the only signal we installed
-     this handler for, but if that changes we'll need to care what we were
-     passed) *)
   List.iter (fun (pid, _id) ->
       match Unix.(waitpid [WNOHANG] pid) with
       | 0, _ -> () (* pid 0 means nothing was waiting *)
@@ -93,12 +103,7 @@ let crash_detector output _sigchld =
             | Ok lines -> match Common.Parse.(get_stats lines |> lookup_crashes) with
               | Some 0 | None -> (* no crashes, so no further action needed here *) ()
               | Some _ -> (* all done, then! *)
-                List.iter (fun (pid, _) ->
-                    try Unix.kill Sys.sigterm ((-1) * pid) (* kill the whole
-                                                              pgroup *)
-                    with Unix.Unix_error(Unix.ESRCH, _, _) ->
-                     (* it's OK if it's already dead *) ()
-                  ) other_pids;
+                terminate_child_processes other_pids;
                 (* instead of going immediately into cleanup and exit,
                    go back to normal program flow so we have a chance to
                    waitpid on the remaining stuff, so child processes can clean 
@@ -185,6 +190,7 @@ let fuzz verbosity fuzzer single_core got_cpu input output memory program progra
       Error (`Msg ("couldn't try to find " ^ fuzzer ^ ": " ^ e))
     | Ok true ->
       (* always start at least one afl-fuzz *)
+      Sys.(set_signal sigterm (Signal_handle (term_handler output)));
       Sys.(set_signal sigchld (Signal_handle (crash_detector output)));
       let id = 1 in
       let primary_pid = spawn verbosity env id fuzzer memory input output

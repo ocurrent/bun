@@ -80,10 +80,13 @@ let crash_detector output _sigchld =
         let other_pids, our_pids = List.partition (fun i -> (<>) pid (fst i)) !pids in
         pids := other_pids;
         match !pids, code with
-        | [], 0 ->
+        | [], 0 -> begin
           Printf.printf "The last (or only) fuzzer (%d) has finished!\n%!" pid;
           Common.Print.print_crashes output |> Rresult.R.get_ok;
-          exit 0
+          match Common.Parse.get_crash_files output with
+          | Ok [] -> exit 0
+          | _ -> exit 1
+        end
         | [], d ->
           Printf.printf "The last (or only) fuzzer (%d) has failed with code %d\n%!"
             pid d;

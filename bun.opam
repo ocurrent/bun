@@ -6,7 +6,6 @@ bug-reports: "https://github.com/yomimono/ocaml-bun/issues"
 dev-repo: "https://github.com/yomimono/ocaml-bun.git"
 license: "MIT"
 build: [[ "jbuilder" "build" "@install" ]]
-build-test: [[ "jbuilder" "build" "@runtest" "-j1" "--no-buffer" ]]
 available: [ ocaml-version >= "4.04" ]
 depends: [
   "jbuilder" {build}

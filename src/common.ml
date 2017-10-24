@@ -25,6 +25,7 @@ module Parse = struct
 
   let get_stats_lines ~id output =
     Bos.OS.File.read_lines Fpath.(output / id / "fuzzer_stats")
+
 end
 
 module Print = struct
@@ -44,8 +45,8 @@ module Print = struct
     | Ok [] ->
       Printf.printf "No crashes found!\n%!"; Ok ()
     | Ok crashes ->
-      Printf.printf "%d crashes found! Take a look; copy/paste to save for \
-                     reproduction:\n%!" (List.length crashes);
+      Printf.printf "Crashes found! Take a look; copy/paste to save for \
+                     reproduction:\n%!";
       try
         List.iteri (fun i c ->
             match base64 c with
@@ -72,20 +73,20 @@ module Print = struct
         execs paths stability
 end
 
-let rec mon verbose (pids : (int * int) list ref) oneshot output : (unit, Rresult.R.msg) result =
-  match oneshot, Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
-  | false, Error (`Msg e) ->
+let rec mon verbose (pids : (int * int) list ref) output : (unit, Rresult.R.msg) result =
+  match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
+  | Error (`Msg e) ->
     (* this is probably just a race -- keep trying *)
     (* (but TODO retry-bound this and terminate so we don't keep trying forever) *)
     Printf.eprintf "%s\n%!" e;
-    Unix.sleep 1;
-    mon verbose pids oneshot output
-  | false, Ok [] ->
+    Unix.sleep 5;
+    mon verbose pids output
+  | Ok [] ->
     Printf.eprintf "No fuzzer stats files found - waiting on the world to \
                     change\n%!";
     Unix.sleep 1;
-    mon verbose pids oneshot output
-  | false, Ok _ ->
+    mon verbose pids output
+  | Ok _ ->
     (* the caller will know if all children have died. *)
     (* no compelling reason to reimplement afl-whatsup now that we found the
        right env vars to make the afl-fuzz instances do the right thing,
@@ -96,8 +97,4 @@ let rec mon verbose (pids : (int * int) list ref) oneshot output : (unit, Rresul
       | Ok () -> ()
     in
     Unix.sleep 60;
-    mon verbose pids oneshot output
-  | true, Ok _ ->
-    Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output)
-  | true, Error e -> Error e
-
+    mon verbose pids output

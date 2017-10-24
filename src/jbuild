@@ -1,16 +1,7 @@
 (jbuild_version 1)
 
 (executables
- ((names (bun mon))
-  (public_names (bun mon))
+ ((names (bun))
+  (public_names (bun))
   (libraries (bos cmdliner fpath rresult astring spawn)))
 )
-
-(alias
- ((name runtest)
-  (deps (bun.exe mon.exe (files_recursively_in test/input)))
-  (action (run ${bin:bun} "-v"
-            "--input=../../.aliases/test/input"
-            "--output=output"
-            "--"
-            ${bin:mon} "--oneshot"))))

@@ -123,15 +123,15 @@ let crash_detector output _sigchld =
         match !pids, code with
         | [], 0 -> begin
           Printf.printf "The last (or only) fuzzer (%d) has finished!\n%!" pid;
-          Common.Print.print_crashes output |> Rresult.R.get_ok;
-          match Common.Parse.get_crash_files output with
+          Files.Print.print_crashes output |> Rresult.R.get_ok;
+          match Files.Parse.get_crash_files output with
           | Ok [] -> exit 0
           | _ -> exit 1
         end
         | [], d ->
           Printf.printf "The last (or only) fuzzer (%d) has failed with code %d\n%!"
             pid d;
-          Common.Print.print_crashes output |> Rresult.R.get_ok;
+          Files.Print.print_crashes output |> Rresult.R.get_ok;
           exit 1
         | _, _ ->
           (* other fuzzers are still active, but if we've crashed, we should
@@ -142,9 +142,9 @@ let crash_detector output _sigchld =
             (* we can't look up whether this pid found a crash. we
                           could check whether *any* pid found a crash, which
                           might be preferable; TODO *)
-            match Common.Parse.get_stats_lines ~id:(string_of_int id) output with
+            match Files.Parse.get_stats_lines ~id:(string_of_int id) output with
             | Error _ | Ok [] -> () (* if it did, we can't know about it *)
-            | Ok lines -> match Common.Parse.(get_stats lines |> lookup_crashes) with
+            | Ok lines -> match Files.Parse.(get_stats lines |> lookup_crashes) with
               | Some 0 | None -> (* no crashes, so no further action needed here *) ()
               | Some _ -> (* all done, then! *)
                 terminate_child_processes other_pids;
@@ -166,7 +166,7 @@ let how_many_cores cpu =
   let er = Rresult.R.error_msg_to_invalid_arg in
   try
     Bos.OS.Cmd.(run_out ~err:err_run_out (Bos.Cmd.v cpu) |> out_run_in |> er) |>
-    Common.Parse.get_cores |> er
+    Files.Parse.get_cores |> er
   with
   | Not_found | Invalid_argument _ | Failure _ -> 0
 

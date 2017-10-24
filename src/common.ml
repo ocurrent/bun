@@ -70,34 +70,3 @@ module Print = struct
       | Invalid_argument e -> Error (`Msg (Format.asprintf "Failed to base64 a \
                                                             crash file: %s" e))
 end
-
-let rec mon verbose whatsup (pids : (int * int) list ref) output : (unit, Rresult.R.msg) result =
-  match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
-  | Error (`Msg e) ->
-    (* this is probably just a race -- keep trying *)
-    (* (but TODO retry-bound this and print an appropriate message if it doesn't
-       look like we were just too fast *)
-    if (List.length verbose > 0) then
-      Printf.eprintf "No fuzzer_stats in the output directory:%s\n%!" e;
-    Unix.sleep 5;
-    mon verbose whatsup pids output
-  | Ok [] ->
-    if (List.length verbose > 1) then
-      Printf.eprintf "No fuzzer stats files found - waiting on the world to \
-                      change\n%!";
-    Unix.sleep 1;
-    mon verbose whatsup pids output
-  | Ok _ ->
-    (* the caller will know if all children have died. *)
-    (* no compelling reason to reimplement afl-whatsup at the moment.
-       if that changes, check commit history for the `mon` binary and its
-       associated code, which parses `fuzzer_stats` itself and doubles as a nice
-       thing for `bun` to test itself on. *)
-    let () =
-      match Bos.OS.Cmd.run Bos.Cmd.(v whatsup % Fpath.to_string output) with
-      | Error (`Msg e) -> if (List.length verbose > 0) then
-          Printf.eprintf "error running whatsup: %s\n%!" e
-      | Ok () -> ()
-    in
-    Unix.sleep 60;
-    mon verbose whatsup pids output

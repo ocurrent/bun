@@ -63,6 +63,37 @@ let whatsup =
 
 let pids = ref []
 
+let rec mon verbose whatsup output =
+  match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
+  | Error (`Msg e) ->
+    (* this is probably just a race -- keep trying *)
+    (* (but TODO retry-bound this and print an appropriate message if it doesn't
+       look like we were just too fast *)
+    if (List.length verbose > 0) then
+      Printf.eprintf "No fuzzer_stats in the output directory:%s\n%!" e;
+    Unix.sleep 5;
+    mon verbose whatsup output
+  | Ok [] ->
+    if (List.length verbose > 1) then
+      Printf.eprintf "No fuzzer stats files found - waiting on the world to \
+                      change\n%!";
+    Unix.sleep 1;
+    mon verbose whatsup output
+  | Ok _ ->
+    (* the caller will know if all children have died. *)
+    (* no compelling reason to reimplement afl-whatsup at the moment.
+       if that changes, check commit history for the `mon` binary and its
+       associated code, which parses `fuzzer_stats` itself and doubles as a nice
+       thing for `bun` to test itself on. *)
+    let () =
+      match Bos.OS.Cmd.run Bos.Cmd.(v whatsup % Fpath.to_string output) with
+      | Error (`Msg e) -> if (List.length verbose > 0) then
+          Printf.eprintf "error running whatsup: %s\n%!" e
+      | Ok () -> ()
+    in
+    Unix.sleep 60;
+    mon verbose whatsup output
+
 let terminate_child_processes =
   List.iter (fun (pid, _) ->
       try Unix.kill Sys.sigterm ((-1) * pid) (* kill the whole pgroup *)
@@ -198,11 +229,11 @@ let fuzz verbosity single_core fuzzer whatsup gotcpu input output memory program
           program program_argv in
       pids := [primary_pid, id];
       match single_core with
-      | true -> Common.mon verbosity whatsup pids output
+      | true -> mon verbosity whatsup output
       | false ->
         Unix.sleep 1; (* make sure other CPU detection doesn't stomp ours *)
         fill_cores id;
-        Common.mon verbosity whatsup pids output
+        mon verbosity whatsup output
 
 let fuzz_t = Cmdliner.Term.(const fuzz
                             $ verbosity $ single_core (* bun/mon args *)

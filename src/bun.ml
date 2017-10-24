@@ -182,7 +182,7 @@ let spawn verbosity env id fuzzer memory input output program program_argv =
   let stdout = match (List.length verbosity) > 1 with
     | true -> Unix.stdout
     | false ->
-      Unix.openfile (Fpath.to_string Bos.OS.File.null) [Unix.O_WRONLY] 0o000
+      Unix.openfile (Fpath.to_string Bos.OS.File.null) [Unix.O_WRONLY] 0o200
   in
   (* see afl-latest's docs/env_variables.txt for information on these --
      the variables we pass ask AFL to finish after it's "done" (the cycle

@@ -93,11 +93,11 @@ let crash_detector output _sigchld =
           (* other fuzzers are still active, but if we've crashed, we should
              still exit *)
           (* see whether this pid found a crash *)
-          match List.assoc_opt pid our_pids with
-          | None -> () (* we can't look up whether this pid found a crash. we
+          try
+            let id = List.assoc pid our_pids in
+            (* we can't look up whether this pid found a crash. we
                           could check whether *any* pid found a crash, which
                           might be preferable; TODO *)
-          | Some id ->
             match Common.Parse.get_stats_lines ~id:(string_of_int id) output with
             | Error _ | Ok [] -> () (* if it did, we can't know about it *)
             | Ok lines -> match Common.Parse.(get_stats lines |> lookup_crashes) with
@@ -109,6 +109,8 @@ let crash_detector output _sigchld =
                    waitpid on the remaining stuff, so child processes can clean 
                    up (including any write tasks they may have pending) *)
                 ()
+          with
+          | Not_found -> ()
     ) !pids
 
 

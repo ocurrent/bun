@@ -9,7 +9,9 @@ module Parse = struct
     (* convert 2-length lists to tuples *)
     List.map (function hd::tl::[] -> hd,tl | _ -> assert false) lines
 
-  let lookup s l = List.find_opt (fun (a,_) -> Astring.String.equal a s) l
+  let lookup s l =
+    try Some (List.find (fun (a,_) -> Astring.String.equal a s) l) with Not_found -> None
+
   let lookup_int s l = match lookup s l with
     | None -> None
     | Some (_, i) -> try Some (int_of_string i) with Invalid_argument _ -> None

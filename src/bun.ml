@@ -170,7 +170,7 @@ let how_many_cores cpu =
   with
   | Not_found | Invalid_argument _ | Failure _ -> 0
 
-let spawn verbosity env id fuzzer memory input output program program_argv : int =
+let spawn verbosity env id fuzzer memory input output program program_argv =
   let argv = [fuzzer;
               "-m"; (string_of_int memory);
               "-i"; (Fpath.to_string input);
@@ -186,7 +186,8 @@ let spawn verbosity env id fuzzer memory input output program program_argv : int
   in
   (* see afl-latest's docs/env_variables.txt for information on these --
      the variables we pass ask AFL to finish after it's "done" (the cycle
-     counter would turn green in the UI) or it's found a crash *)
+     counter would turn green in the UI) or it's found a crash, plus the obvious
+     (if sad) request not to show us its excellent UI *)
   let env = "AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::"AFL_BENCH_UNTIL_CRASH=1"::
             env in
   let pid = Spawn.spawn ~env ~stdout ~prog:fuzzer ~argv () in

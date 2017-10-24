@@ -26,6 +26,17 @@ module Parse = struct
   let get_stats_lines ~id output =
     Bos.OS.File.read_lines Fpath.(output / id / "fuzzer_stats")
 
+  let get_cores gotcpus =
+    let process_preamble = "more processes on " in
+    let more_processes = Bos.Cmd.(v "grep" % process_preamble) in
+    let (>>=) = Rresult.R.bind in
+      Bos.OS.Cmd.(run_io more_processes gotcpus |> to_lines) >>= fun l ->
+      match List.map (Astring.String.cut ~sep:process_preamble) l
+            |> List.find (function | Some _ -> true | None -> false) with
+      | None -> Ok 0
+      | Some (_, cores) ->
+        Ok (Astring.String.fields cores |> List.hd |> int_of_string)
+
 end
 
 module Print = struct
@@ -35,7 +46,7 @@ module Print = struct
     Bos.OS.Cmd.to_string
 
   let output_pasteable str id =
-    Printf.sprintf "echo %s | base64 -d > crash_$(date -u +%%s).%d" str id
+    Printf.sprintf "echo %s | base64 -d > crash_%d.$(date -u +%%s)" str id
 
   let print_crashes output_dir =
     match Parse.get_crash_files output_dir with
@@ -58,43 +69,35 @@ module Print = struct
       with
       | Invalid_argument e -> Error (`Msg (Format.asprintf "Failed to base64 a \
                                                             crash file: %s" e))
-  let print_stats verbose lines =
-    let default d = function
-      | None -> d
-      | Some (_, p) -> p
-    in
-    match List.length verbose with
-    | _ ->
-      let execs = Parse.lookup "execs_per_sec" lines |> default "an unknowable number of" in
-      let paths = Parse.lookup "paths_found" lines |> default "an unknowable number of" in
-      let stability = Parse.lookup "stability" lines |> default "an unknowable amount of" in
-      Printf.printf "fuzzing hard at %s executions per second, having already \
-                     discovered %s execution paths with %s stability\n%!"
-        execs paths stability
 end
 
-let rec mon verbose (pids : (int * int) list ref) output : (unit, Rresult.R.msg) result =
+let rec mon verbose whatsup (pids : (int * int) list ref) output : (unit, Rresult.R.msg) result =
   match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
   | Error (`Msg e) ->
     (* this is probably just a race -- keep trying *)
-    (* (but TODO retry-bound this and terminate so we don't keep trying forever) *)
-    Printf.eprintf "%s\n%!" e;
+    (* (but TODO retry-bound this and print an appropriate message if it doesn't
+       look like we were just too fast *)
+    if (List.length verbose > 0) then
+      Printf.eprintf "No fuzzer_stats in the output directory:%s\n%!" e;
     Unix.sleep 5;
-    mon verbose pids output
+    mon verbose whatsup pids output
   | Ok [] ->
-    Printf.eprintf "No fuzzer stats files found - waiting on the world to \
-                    change\n%!";
+    if (List.length verbose > 1) then
+      Printf.eprintf "No fuzzer stats files found - waiting on the world to \
+                      change\n%!";
     Unix.sleep 1;
-    mon verbose pids output
+    mon verbose whatsup pids output
   | Ok _ ->
     (* the caller will know if all children have died. *)
-    (* no compelling reason to reimplement afl-whatsup now that we found the
-       right env vars to make the afl-fuzz instances do the right thing,
-       so let's just run that *)
+    (* no compelling reason to reimplement afl-whatsup at the moment.
+       if that changes, check commit history for the `mon` binary and its
+       associated code, which parses `fuzzer_stats` itself and doubles as a nice
+       thing for `bun` to test itself on. *)
     let () =
-      match Bos.OS.Cmd.run Bos.Cmd.(v "afl-whatsup" % Fpath.to_string output) with
-      | Error (`Msg e) -> Printf.eprintf "ignoring error %s\n%!" e
+      match Bos.OS.Cmd.run Bos.Cmd.(v whatsup % Fpath.to_string output) with
+      | Error (`Msg e) -> if (List.length verbose > 0) then
+          Printf.eprintf "error running whatsup: %s\n%!" e
       | Ok () -> ()
     in
     Unix.sleep 60;
-    mon verbose pids output
+    mon verbose whatsup pids output

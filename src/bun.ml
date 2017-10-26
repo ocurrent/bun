@@ -51,14 +51,14 @@ let fuzzer =
 let gotcpu =
   let doc = "The command to run to see whether more cores are available. For \
              all practical purposes, it should be afl-gotcpu." in
-  Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-gotcpu"
+  Cmdliner.Arg.(value & opt file "afl-gotcpu"
                 & info ["gotcpu"] ~docv:"GOTCPU" ~doc)
 
 let whatsup =
   let doc = "The command to run to display information on the fuzzer stats \
   during operation.  This is usually afl-whatsup, but `ocaml-bun` is not \
              sensitive to its output, so you can use whatever you like." in
-  Cmdliner.Arg.(value & opt file "/usr/local/bin/afl-whatsup" & info ["whatsup"]
+  Cmdliner.Arg.(value & opt file "afl-whatsup" & info ["whatsup"]
                   ~docv:"WHATSUP" ~doc)
 
 let pids = ref []

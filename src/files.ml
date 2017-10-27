@@ -27,13 +27,10 @@ let find_fuzzer fuzzer =
 module Parse = struct
   let get_stats lines =
     (* did someone say shotgun parsers? *)
-    (* separate on : , keep only length 2 lists *)
-    let lines = List.map (Astring.String.fields ~empty:false ~is_sep:((=) ':'))
-        lines |> List.filter (fun a -> 2 = List.length a) in
-    (* drop whitespace *)
-    let lines = List.map (List.map Astring.String.trim) lines in
-    (* convert 2-length lists to tuples *)
-    List.map (function hd::tl::[] -> hd,tl | _ -> assert false) lines
+    List.map (Astring.String.fields ~empty:false ~is_sep:((=) ':')) lines |>
+    List.map (List.map Astring.String.trim) |>
+    List.fold_left (fun acc -> function | hd::tl::[]-> (hd, tl)::acc
+                                        | _ -> acc) [] |> List.rev
 
   let lookup s l =
     try Some (List.find (fun (a,_) -> Astring.String.equal a s) l) with Not_found -> None
@@ -56,12 +53,12 @@ module Parse = struct
     let process_preamble = "more processes on " in
     let more_processes = Bos.Cmd.(v "grep" % process_preamble) in
     let (>>=) = Rresult.R.bind in
-      Bos.OS.Cmd.(run_io more_processes gotcpus |> to_lines) >>= fun l ->
-      match List.map (Astring.String.cut ~sep:process_preamble) l
-            |> List.find (function | Some _ -> true | None -> false) with
-      | None -> Ok 0
-      | Some (_, cores) ->
-        Ok (Astring.String.fields cores |> List.hd |> int_of_string)
+    Bos.OS.Cmd.(run_io more_processes gotcpus |> to_lines) >>= fun l ->
+    match List.map (Astring.String.cut ~sep:process_preamble) l
+          |> List.find (function | Some _ -> true | None -> false) with
+    | None -> Ok 0
+    | Some (_, cores) ->
+      Ok (Astring.String.fields cores |> List.hd |> int_of_string)
 
 end
 

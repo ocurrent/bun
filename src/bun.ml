@@ -103,7 +103,7 @@ let rec mon verbose whatsup output =
 
 let terminate_child_processes =
   List.iter (fun (pid, _) ->
-      try Unix.kill ((-1) * pid) Sys.sigterm (* kill the whole pgroup *)
+      try Unix.kill (pid) Sys.sigterm (* kill the whole pgroup *)
       with Unix.Unix_error(Unix.ESRCH, _, _) -> () (* it's OK if it's already dead *)
     )
 

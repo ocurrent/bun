@@ -14,13 +14,17 @@ let find_fuzzer fuzzer =
                  List.rev in
       try
         let dir = (List.find (fun dir ->
-            Fpath.(append dir fuzzer) |> Fpath.to_string |> Bos.Cmd.v
-            |> Bos.OS.Cmd.exists |> Rresult.R.error_msg_to_invalid_arg))
+            Fpath.(append dir fuzzer)
+            |> Bos.OS.File.exists
+            |> Rresult.R.error_msg_to_invalid_arg))
             path in
         Ok (Fpath.append dir fuzzer)
       with
       | Invalid_argument s -> Rresult.R.error_msg s
-      | Not_found -> Error (`Msg (Fmt.strf "could not resolve a path for %a"
+      | Not_found -> Error (`Msg (Fmt.strf
+                                    "could not find %a to invoke it - \
+                                    try specifying the full path, or ensuring it \
+                                    is in your PATH"
                                     Fpath.pp fuzzer))
     end
 

@@ -20,6 +20,13 @@ let single_core =
              parallel_fuzzing.txt docuentation." in
   Cmdliner.Arg.(value & flag & info ["s"; "single-core"] ~docv:"SINGLE_CORE" ~doc)
 
+let no_kill =
+  let doc = "Allow afl-fuzz to continue attempting to find crashes after the
+  first crash is discovered.  In this mode, individual afl-fuzz instances will
+  not automatically terminate after discovering crashes, nor will bun kill all
+  other instances once a single instance terminates for any reason." in
+  Cmdliner.Arg.(value & flag & info ["n"; "no-kill"] ~docv:"NO_KILL" ~doc)
+
 let verbosity =
   let doc = "Verbosity. -v echoes what `bun` is invoking and is noisier in \
              error cases; -vv gets stdout from the underlying fuzzer." in
@@ -107,11 +114,11 @@ let term_handler _sigterm =
   the fuzzers more time to explore the state space, if possible.\n%!";
   terminate_child_processes !pids
 
-let crash_detector output _sigchld =
+let crash_detector no_kill output _sigchld =
   (* we received SIGCHLD -- at least one of the pids we launched has completed.
      if more are still running, there's no reason to panic,
-     but if none remain (or if the pid completed because it found a crash),
-     we should clean up as if we'd received SIGTERM. *)
+     but if none remain (or if the pid completed because it found a crash and
+     no_kill is not set), we should clean up as if we'd received SIGTERM. *)
   List.iter (fun (pid, _id) ->
       match Unix.(waitpid [WNOHANG] pid) with
       | 0, _ -> () (* pid 0 means nothing was waiting *)
@@ -147,12 +154,13 @@ let crash_detector output _sigchld =
             | Ok lines -> match Files.Parse.(get_stats lines |> lookup_crashes) with
               | Some 0 | None -> (* no crashes, so no further action needed here *) ()
               | Some _ -> (* all done, then! *)
-                terminate_child_processes other_pids;
+                match no_kill with
+                | false -> terminate_child_processes other_pids
                 (* instead of going immediately into cleanup and exit,
                    go back to normal program flow so we have a chance to
                    waitpid on the remaining stuff, so child processes can clean 
                    up (including any write tasks they may have pending) *)
-                ()
+                | true -> ()
           with
           | Not_found -> ()
     ) !pids
@@ -189,17 +197,19 @@ let spawn verbosity env id fuzzer memory input output program program_argv =
      the variables we pass ask AFL to finish after it's "done" (the cycle
      counter would turn green in the UI) or it's found a crash, plus the obvious
      (if sad) request not to show us its excellent UI *)
-  let env = "AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::"AFL_BENCH_UNTIL_CRASH=1"::
-            env in
+  let env = "AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::env in
   let pid = Spawn.spawn ~env ~stdout ~prog:fuzzer ~argv () in
   if (List.length verbosity) > 0 then
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
 
-let fuzz verbosity single_core fuzzer whatsup gotcpu input output memory program program_argv
+let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory program program_argv
   : (unit, Rresult.R.msg) result =
   let open Rresult.R.Infix in
-  let env = Unix.environment () |> Array.to_list in
+  let env = Unix.environment () |> Array.to_list |> fun env ->
+            match no_kill with | false -> "AFL_BENCH_UNTIL_CRASH=1"::env
+                               | true -> env
+  in
   let max =
     match single_core, how_many_cores gotcpu with
     | true, n when n > 1 -> 1
@@ -219,7 +229,7 @@ let fuzz verbosity single_core fuzzer whatsup gotcpu input output memory program
   Files.find_fuzzer fuzzer >>= fun fuzzer ->
   (* always start at least one afl-fuzz *)
   Sys.(set_signal sigterm (Signal_handle term_handler));
-  Sys.(set_signal sigchld (Signal_handle (crash_detector output)));
+  Sys.(set_signal sigchld (Signal_handle (crash_detector no_kill output)));
   let id = 1 in
   let primary_pid = spawn verbosity env id fuzzer memory input output
       program program_argv in
@@ -232,7 +242,7 @@ let fuzz verbosity single_core fuzzer whatsup gotcpu input output memory program
     mon verbosity whatsup output
 
 let fuzz_t = Cmdliner.Term.(const fuzz
-                            $ verbosity $ single_core (* bun/mon args *)
+                            $ verbosity $ no_kill $ single_core (* bun/mon args *)
                             $ fuzzer $ whatsup $ gotcpu (* external cmds *)
                             $ input_dir $ output_dir $ memory
                             $ program $ program_argv) (* fuzzer flags *)

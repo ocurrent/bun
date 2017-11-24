@@ -230,6 +230,8 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
   (* always start at least one afl-fuzz *)
   Sys.(set_signal sigterm (Signal_handle term_handler));
   Sys.(set_signal sigchld (Signal_handle (crash_detector no_kill output)));
+  Sys.(set_signal sigusr1 (Signal_handle (fun _ -> Files.Print.print_crashes output |>
+                                          fun _ -> ())));
   let id = 1 in
   let primary_pid = spawn verbosity env id fuzzer memory input output
       program program_argv in
@@ -239,6 +241,7 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
   | false ->
     Unix.sleep 1; (* make sure other CPU detection doesn't stomp ours *)
     fill_cores fuzzer id;
+    Unix.sleep 3; (* try to make the first `afl-whatsup` see all the fuzzers *)
     mon verbosity whatsup output
 
 let fuzz_t = Cmdliner.Term.(const fuzz

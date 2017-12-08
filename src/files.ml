@@ -53,7 +53,7 @@ module Parse = struct
   let get_stats_lines ~id output =
     Bos.OS.File.read_lines Fpath.(output / id / "fuzzer_stats")
 
-  let get_cores gotcpus =
+  let get_cores verbosity gotcpus =
     let process_preamble = "more processes on " in
     let more_processes = Bos.Cmd.(v "grep" % process_preamble) in
     let (>>=) = Rresult.R.bind in
@@ -62,6 +62,8 @@ module Parse = struct
           |> List.find (function | Some _ -> true | None -> false) with
     | None -> Ok 0
     | Some (_, cores) ->
+      if (List.length verbosity > 1) then
+        Printf.printf "cores line: %s\n%!" cores;
       Ok (Astring.String.fields cores |> List.hd |> int_of_string)
 
 end

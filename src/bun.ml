@@ -166,7 +166,7 @@ let crash_detector no_kill output _sigchld =
     ) !pids
 
 
-let how_many_cores cpu =
+let how_many_cores verbosity cpu =
   (* it's better to check once to see how many afl-fuzzes we can spawn, and then
      let afl-fuzz's own startup jitter plus a small delay from us 
      ensure they don't step on each others' toes when discovering CPU
@@ -174,7 +174,7 @@ let how_many_cores cpu =
   let er = Rresult.R.error_msg_to_invalid_arg in
   try
     Bos.OS.Cmd.(run_out ~err:err_run_out (Bos.Cmd.v cpu) |> out_run_in |> er) |>
-    Files.Parse.get_cores |> er
+    Files.Parse.get_cores verbosity |> er
   with
   | Not_found | Invalid_argument _ | Failure _ -> 0
 
@@ -211,10 +211,13 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
                                | true -> env
   in
   let max =
-    match single_core, how_many_cores gotcpu with
+    match single_core, how_many_cores verbosity gotcpu with
     | true, n when n > 1 -> 1
+    | _, n when n < 1 -> 1 (* always launch at least 1 *)
     | _, n -> n
   in
+  if (List.length verbosity) > 0 then
+    Printf.printf "%d free cores detected!\n$!" max;
   let fill_cores fuzzer start_id =
     let rec launch_more max i =
       if i > max then () else begin
@@ -223,7 +226,7 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
         launch_more max (i+1)
       end
     in
-    launch_more max (start_id + 1)
+    launch_more max start_id
   in
   Bos.OS.Dir.create output >>= fun _ ->
   Files.find_fuzzer fuzzer >>= fun fuzzer ->
@@ -233,15 +236,14 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
   Sys.(set_signal sigusr1 (Signal_handle (fun _ -> Files.Print.print_crashes output |>
                                           fun _ -> ())));
   let id = 1 in
-  let primary_pid = spawn verbosity env id fuzzer memory input output
-      program program_argv in
-  pids := [primary_pid, id];
   match single_core with
-  | true -> mon verbosity whatsup output
+  | true ->
+    let primary_pid = spawn verbosity env id fuzzer memory input output
+      program program_argv in
+    pids := [primary_pid, id];
+    mon verbosity whatsup output
   | false ->
-    Unix.sleep 1; (* make sure other CPU detection doesn't stomp ours *)
     fill_cores fuzzer id;
-    Unix.sleep 3; (* try to make the first `afl-whatsup` see all the fuzzers *)
     mon verbosity whatsup output
 
 let fuzz_t = Cmdliner.Term.(const fuzz

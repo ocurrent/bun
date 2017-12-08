@@ -166,18 +166,6 @@ let crash_detector no_kill output _sigchld =
     ) !pids
 
 
-let how_many_cores verbosity cpu =
-  (* it's better to check once to see how many afl-fuzzes we can spawn, and then
-     let afl-fuzz's own startup jitter plus a small delay from us 
-     ensure they don't step on each others' toes when discovering CPU
-     affinity. *)
-  let er = Rresult.R.error_msg_to_invalid_arg in
-  try
-    Bos.OS.Cmd.(run_out ~err:err_run_out (Bos.Cmd.v cpu) |> out_run_in |> er) |>
-    Files.Parse.get_cores verbosity |> er
-  with
-  | Not_found | Invalid_argument _ | Failure _ -> 0
-
 let spawn verbosity env id fuzzer memory input output program program_argv =
   let fuzzer = Fpath.to_string fuzzer in
   let argv = [fuzzer;
@@ -211,13 +199,13 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
                                | true -> env
   in
   let max =
-    match single_core, how_many_cores verbosity gotcpu with
+    match single_core, Files.Parse.get_cores verbosity gotcpu with
     | true, n when n > 1 -> 1
     | _, n when n < 1 -> 1 (* always launch at least 1 *)
     | _, n -> n
   in
   if (List.length verbosity) > 0 then
-    Printf.printf "%d free cores detected!\n$!" max;
+    Printf.printf "%d free cores detected!\n%!" max;
   let fill_cores fuzzer start_id =
     let rec launch_more max i =
       if i > max then () else begin
@@ -243,6 +231,10 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
     pids := [primary_pid, id];
     mon verbosity whatsup output
   | false ->
+    (* check once to see how many afl-fuzzes we can spawn, and then
+       let afl-fuzz's own startup jitter plus a small delay from us 
+       ensure they don't step on each others' toes when discovering CPU
+       affinity. *)
     fill_cores fuzzer id;
     mon verbosity whatsup output
 

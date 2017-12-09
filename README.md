@@ -1,12 +1,12 @@
 # What is this?
 
-`bun` is a tool for integrating fuzzer-based tests into a conventional CI pipeline.  The popular afl-fuzz tool in particular is designed to use all available compute time and keep records on persistent storage for later examination by an analyst; this particular workflow is ill-suited for cloud-based CI testing services, which do not persist storage for users and unceremoniously kill long-running processes.
+`bun` is a tool for integrating fuzzer-based tests into a conventional CI pipeline.  The popular afl-fuzz tool in particular is designed to use only one CPU core per invocation and keep records on persistent storage for later examination by an analyst; this particular workflow is ill-suited for cloud-based CI testing services, which do not persist storage for users and unceremoniously kill long-running processes.  It also makes using available compute resources (two CPU cores even for free-tier Travis CI) challenging.
 
 ## How does it work?
 
-`bun` launches `afl-fuzz` processes and monitors their progress with `afl-whatsup`.  `afl-fuzz` instances run in a mode where they will stop when they find a crash or `afl-fuzz` determines that there is a low likelihood of finding one with additional work.
+`bun` uses `afl-gotcpu` to detect the number of free CPU cores and then launches that number of `afl-fuzz` processes, configured in the correct manner to cooperate exploring the program's state space. `bun` monitors the progress of running `afl-fuzz` instances with `afl-whatsup`.  `afl-fuzz` instances launched by `bun` run in a mode where they will stop when they find a crash or `afl-fuzz` determines that there is a low likelihood of finding one with additional work.
 
-When crashes are detected on any `afl-fuzz` process, `bun` will stop the others and report the crash information.  If no crashes are detected, `bun` will continue running until the last `afl-fuzz` gives up.
+When crashes are detected on any `afl-fuzz` process, `bun` will stop the others and report the crash information.  If no crashes are detected, `bun` will continue running until the last `afl-fuzz` gives up.  (You may wish to limit the wall-clock time consumed with `timeout` when initially launching `bun`.)
 
 ## How do I use the output?
 

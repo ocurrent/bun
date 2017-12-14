@@ -5,7 +5,7 @@ homepage: "https://github.com/yomimono/ocaml-bun"
 bug-reports: "https://github.com/yomimono/ocaml-bun/issues"
 dev-repo: "https://github.com/yomimono/ocaml-bun.git"
 license: "MIT"
-build: [[ "jbuilder" "build" "@install" ]]
+build: [[ "jbuilder" "build" "-p" name "-j" jobs ]]
 available: [ ocaml-version >= "4.04" ]
 depends: [
   "jbuilder" {build}
@@ -15,4 +15,5 @@ depends: [
   "rresult"
   "astring"
   "spawn"
+  "afl"
 ]

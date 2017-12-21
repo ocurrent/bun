@@ -14,6 +14,6 @@ depends: [
   "fpath"
   "rresult"
   "astring"
-  "spawn"
+  "spawn" {>= "0.10.1"}
   "afl"
 ]

@@ -41,17 +41,10 @@ Fatal error: exception Crowbar.TestFailure
 
 # Building
 
-linking will currently fail unless you link a version of `spawn` which knows to
-link against pthread:
+The usual `jbuilder` runes should be sufficient:
 
 ```
-opam pin add spawn https://github.com/yomimono/spawn.git#pthread
-```
-
-Otherwise, the usual `jbuilder` runes should be sufficient:
-
-```
-jbuilder build @install
+jbuilder build --dev @install
 ```
 
 # For CI

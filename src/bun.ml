@@ -204,6 +204,7 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
     | _, n when n < 1 -> 1 (* always launch at least 1 *)
     | _, n -> n
   in
+  Files.fixup_input input >>= fun () ->
   if (List.length verbosity) > 0 then
     Printf.printf "%d free cores detected!\n%!" max;
   let fill_cores fuzzer start_id =

@@ -1,33 +1,3 @@
-let find_fuzzer fuzzer =
-  let open Rresult.R.Infix in
-  Fpath.of_string fuzzer >>= fun fuzzer ->
-  match Fpath.is_abs fuzzer with
-  | true -> Ok fuzzer
-  | false ->
-    if Fpath.segs fuzzer |> List.length <> 1 then
-      Bos.OS.Dir.current () >>| fun cwd -> Fpath.append cwd fuzzer
-    else begin
-      Bos.OS.Env.req_var "PATH" >>= fun path ->
-      let path = Astring.String.fields ~empty:false ~is_sep:((=) ':') path |>
-                 List.map Fpath.of_string |>
-                 List.fold_left (fun l -> function | Ok a -> a::l | _ -> l) []|>
-                 List.rev in
-      try
-        let dir = (List.find (fun dir ->
-            Fpath.(append dir fuzzer)
-            |> Bos.OS.File.exists
-            |> Rresult.R.error_msg_to_invalid_arg))
-            path in
-        Ok (Fpath.append dir fuzzer)
-      with
-      | Invalid_argument s -> Rresult.R.error_msg s
-      | Not_found -> Error (`Msg (Fmt.strf
-                                    "could not find %a to invoke it - \
-                                    try specifying the full path, or ensuring it \
-                                    is in your PATH"
-                                    Fpath.pp fuzzer))
-    end
-
 module Parse = struct
   let get_stats lines =
     (* did someone say shotgun parsers? *)

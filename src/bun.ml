@@ -216,8 +216,12 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
     in
     launch_more max start_id
   in
+  Bos.OS.Cmd.find_tool Bos.Cmd.(v fuzzer) >>= function
+  | None -> Error (`Msg (Fmt.strf "could not find %s to invoke it -- \
+                                   try specifying the full path, or ensuring the binary \
+                                   is in your PATH" fuzzer))
+  | Some fuzzer ->
   Bos.OS.Dir.create output >>= fun _ ->
-  Files.find_fuzzer fuzzer >>= fun fuzzer ->
   (* always start at least one afl-fuzz *)
   Sys.(set_signal sigterm (Signal_handle term_handler));
   Sys.(set_signal sigchld (Signal_handle (crash_detector no_kill output)));

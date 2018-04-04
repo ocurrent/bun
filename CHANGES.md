@@ -1,3 +1,9 @@
+v0.3 2018-04-04
+---------------
+
+- set up input directory if the user hasn't already
+- avoid ugly invocation of whatsup before fuzzers have reported their status
+
 v0.2 2018-03-29
 ---------------
 

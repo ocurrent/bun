@@ -217,6 +217,10 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
     in
     launch_more max start_id
   in
+  let wait_for_output secs =
+    Printf.printf "Fuzzers launched.  Waiting %d seconds for the first status update...\n%!" secs;
+    Unix.sleep secs
+  in
   Bos.OS.Cmd.find_tool Bos.Cmd.(v fuzzer) >>= function
   | None -> Error (`Msg (Fmt.strf "could not find %s to invoke it -- \
                                    try specifying the full path, or ensuring the binary \
@@ -234,6 +238,7 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
     let primary_pid = spawn verbosity env id fuzzer memory input output
       program program_argv in
     pids := [primary_pid, id];
+    wait_for_output 60;
     mon verbosity whatsup output
   | false ->
     (* check once to see how many afl-fuzzes we can spawn, and then
@@ -241,6 +246,7 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
        ensure they don't step on each others' toes when discovering CPU
        affinity. *)
     fill_cores fuzzer id;
+    wait_for_output (60 - max);
     mon verbosity whatsup output
 
 let fuzz_t = Cmdliner.Term.(const fuzz

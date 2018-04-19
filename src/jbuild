@@ -1,7 +1,7 @@
 (jbuild_version 1)
 
-(executables
- ((names (bun))
-  (public_names (bun))
+(executable
+ ((name bun)
+  (public_name bun)
   (libraries (bos cmdliner fpath rresult astring spawn)))
 )

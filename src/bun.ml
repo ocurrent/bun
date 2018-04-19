@@ -17,7 +17,7 @@ let single_core =
   let doc = "Start only one fuzzer instance, even if more CPU cores are \
              available.  Even in this mode, the (lone) fuzzer will be invoked \
              with -S and an id; for more on implications, see the afl-fuzz \
-             parallel_fuzzing.txt docuentation." in
+             parallel_fuzzing.txt documentation." in
   Cmdliner.Arg.(value & flag & info ["s"; "single-core"] ~docv:"SINGLE_CORE" ~doc)
 
 let no_kill =

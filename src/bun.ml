@@ -20,6 +20,13 @@ let single_core =
              parallel_fuzzing.txt documentation." in
   Cmdliner.Arg.(value & flag & info ["s"; "single-core"] ~docv:"SINGLE_CORE" ~doc)
 
+let max_cores =
+  let doc = "Maximum number of instances to run -- of CPU cores to use. \
+             If no value is given, all the cores found by GOTCPU \
+             will be used." in
+  Cmdliner.Arg.(value & opt (some int) None
+                & info ["max-cores"] ~docv:"MAX_CORES" ~doc ~env:(env_var "MAX_CORES"))
+
 let no_kill =
   let doc = "Allow afl-fuzz to continue attempting to find crashes after the
   first crash is discovered.  In this mode, individual afl-fuzz instances will
@@ -191,31 +198,36 @@ let spawn verbosity env id fuzzer memory input output program program_argv =
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
   pid
 
-let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory program program_argv
+let fuzz verbosity no_kill single_core max_cores
+         fuzzer whatsup gotcpu
+         input output memory program program_argv
   : (unit, Rresult.R.msg) result =
   let open Rresult.R.Infix in
   let env = Unix.environment () |> Array.to_list |> fun env ->
             match no_kill with | false -> "AFL_BENCH_UNTIL_CRASH=1"::env
                                | true -> env
   in
-  let max =
-    match single_core, Files.Parse.get_cores verbosity gotcpu with
-    | true, n when n > 1 -> 1
-    | _, n when n < 1 -> 1 (* always launch at least 1 *)
-    | _, n -> n
+  let cores =
+    let limit = if single_core then Some 1 else max_cores in
+    let available = Files.Parse.get_cores verbosity gotcpu in
+    match limit with
+    | None -> available
+    | Some limit ->
+      (* always launch at least 1 *)
+      max 1 (min available limit)
   in
   Files.fixup_input input >>= fun () ->
   if (List.length verbosity) > 0 then
-    Printf.printf "%d free cores detected!\n%!" max;
+    Printf.printf "%d available cores detected!\n%!" cores;
   let fill_cores fuzzer start_id =
     let rec launch_more max i =
       if i > max then () else begin
         pids := ((spawn verbosity env i fuzzer memory input output program
                     program_argv), i) :: !pids;
-        launch_more max (i+1)
+        launch_more cores (i+1)
       end
     in
-    launch_more max start_id
+    launch_more cores start_id
   in
   let wait_for_output secs =
     Printf.printf "Fuzzers launched.  Waiting %d seconds for the first status update...\n%!" secs;
@@ -246,14 +258,15 @@ let fuzz verbosity no_kill single_core fuzzer whatsup gotcpu input output memory
        ensure they don't step on each others' toes when discovering CPU
        affinity. *)
     fill_cores fuzzer id;
-    wait_for_output (60 - max);
+    wait_for_output (60 - cores);
     mon verbosity whatsup output
 
-let fuzz_t = Cmdliner.Term.(const fuzz
-                            $ verbosity $ no_kill $ single_core (* bun/mon args *)
-                            $ fuzzer $ whatsup $ gotcpu (* external cmds *)
-                            $ input_dir $ output_dir $ memory
-                            $ program $ program_argv) (* fuzzer flags *)
+let fuzz_t =
+  Cmdliner.Term.(const fuzz
+                 $ verbosity $ no_kill $ single_core $ max_cores (* bun/mon args *)
+                 $ fuzzer $ whatsup $ gotcpu (* external cmds *)
+                 $ input_dir $ output_dir $ memory
+                 $ program $ program_argv) (* fuzzer flags *)
 
 let bun_info =
   let doc = "invoke afl-fuzz on a program in a CI-friendly way" in

@@ -1,6 +1,6 @@
 # What is this?
 
-`bun` is a tool for integrating fuzzer-based tests into a conventional CI pipeline.  The popular afl-fuzz tool in particular is designed to use only one CPU core per invocation and keep records on persistent storage for later examination by an analyst; this particular workflow is ill-suited for cloud-based CI testing services, which do not persist storage for users and unceremoniously kill long-running processes.  It also makes using available compute resources (two CPU cores even for free-tier Travis CI) challenging.  `bun` attempt to solve these problems.
+`bun` is a tool for integrating fuzzer-based tests into a conventional CI pipeline.  The popular afl-fuzz tool in particular is designed to use only one CPU core per invocation and keep records on persistent storage for later examination by an analyst; this particular workflow is ill-suited for cloud-based CI testing services, which do not persist storage for users and unceremoniously kill long-running processes.  It also makes using available compute resources (two CPU cores even for free-tier Travis CI) challenging.  `bun` attempts to solve these problems.
 
 ![](bun-demo.gif?raw=true)
 

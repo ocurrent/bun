@@ -2,6 +2,7 @@ v0.3.1 2018-05-01
 -----------------
 
 - use alarms/pause instead of sleeping to prevent hanging around after fuzzers have terminated (fixes #3 reported by github user gasche - thanks!)
+- add a --max-cores option, to be considerate when appropriate (#2, by gasche)
 - add some tests and CI for this test and CI thing
 
 v0.3 2018-04-04

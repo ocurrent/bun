@@ -2,6 +2,7 @@
 
 (executable
  ((name short)
+  (ocamlopt_flags (-afl-instrument))
   (modules (short))
   (libraries (crowbar))
  ))

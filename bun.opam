@@ -16,6 +16,6 @@ depends: [
   "rresult" {>= "0.3.0" }
   "astring"
   "crowbar" {test}
-  "spawn" {>= "v0.10.1" & < "v0.12"}
+  "spawn" {>= "v0.12"}
   "afl" {= "2.52b"}
 ]

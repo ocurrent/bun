@@ -198,7 +198,7 @@ let spawn verbosity env id fuzzer memory input output program program_argv =
      the variables we pass ask AFL to finish after it's "done" (the cycle
      counter would turn green in the UI) or it's found a crash, plus the obvious
      (if sad) request not to show us its excellent UI *)
-  let env = "AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::env in
+  let env = Spawn.Env.of_list ("AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::env) in
   let pid = Spawn.spawn ~env ~stdout ~prog:fuzzer ~argv () in
   if (List.length verbosity) > 0 then
     Printf.printf "%s launched: PID %d\n%!" fuzzer pid;

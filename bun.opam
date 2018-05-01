@@ -7,7 +7,7 @@ dev-repo: "https://github.com/yomimono/ocaml-bun.git"
 license: "MIT"
 build: [[ "jbuilder" "build" "-p" name "-j" jobs ]]
 build-test: [[ "jbuilder" "runtest" ]]
-available: [ ocaml-version >= "4.04" ]
+available: [ ocaml-version >= "4.05" ]
 depends: [
   "jbuilder" {build}
   "bos" {>= "0.2.0" }

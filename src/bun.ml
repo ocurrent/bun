@@ -129,10 +129,10 @@ let crash_detector no_kill output _sigchld =
      no_kill is not set), we should clean up as if we'd received SIGTERM. *)
   List.iter (fun (pid, _id) ->
       match Unix.(waitpid [WNOHANG] pid) with
-      | 0, _ -> Printf.printf "All fuzzers have terminated.\n%!"; () (* pid 0 means nothing was waiting *)
       | pid, _ when pid < 0 -> (* an error *) ()
       | _pid, WSTOPPED _ -> (* we don't care *) ()
-      | pid, status ->
+      | waited_pid, status ->
+        let pid = match waited_pid with | 0 -> pid | n -> n in
         let other_pids, our_pids = List.partition (fun i -> (<>) pid (fst i)) !pids in
         pids := other_pids;
         match !pids, status with

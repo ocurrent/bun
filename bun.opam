@@ -1,21 +1,29 @@
-opam-version: "1.2"
+opam-version: "2.0"
+synopsis: "Simple management of afl-fuzz processes"
 maintainer: "maintenance@identity-function.com"
-authors: ["Mindy Preston"]
+authors: [
+  "Mindy Preston"
+  "Thomas Leonard"
+]
+license: "MIT"
 homepage: "https://github.com/yomimono/ocaml-bun"
 bug-reports: "https://github.com/yomimono/ocaml-bun/issues"
-dev-repo: "https://github.com/yomimono/ocaml-bun.git"
-license: "MIT"
-build: [[ "jbuilder" "build" "-p" name "-j" jobs ]]
-build-test: [[ "jbuilder" "runtest" ]]
-available: [ ocaml-version >= "4.05" ]
 depends: [
-  "jbuilder" {build}
-  "bos" {>= "0.2.0" }
-  "cmdliner" {>= "1.0.0" }
+  "ocaml" {>= "4.05"}
+  "dune" {build & >= "1.0"}
+  "bos" {>= "0.2.0"}
+  "cmdliner" {>= "1.0.0"}
   "fpath"
-  "rresult" {>= "0.3.0" }
+  "rresult" {>= "0.3.0"}
   "astring"
-  "crowbar" {test}
-  "spawn" {>= "v0.12"}
+  "crowbar" {with-test}
   "afl" {= "2.52b"}
+  "logs"
+  "fmt"
+  "lwt"
 ]
+build: [
+  ["dune" "build" "-p" name "-j" jobs]
+  ["dune" "runtest" "-p" name "-j" jobs] {with-test}
+]
+dev-repo: "git+https://github.com/yomimono/ocaml-bun.git"

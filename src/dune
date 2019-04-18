@@ -1,0 +1,5 @@
+(executable
+ (name bun)
+ (public_name bun)
+ (libraries bos cmdliner fpath rresult astring lwt.unix
+            logs logs.cli logs.fmt fmt.tty fmt.cli))

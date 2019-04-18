@@ -1,4 +1,5 @@
 (executable
  (name bun)
  (public_name bun)
- (libraries bos cmdliner fpath rresult astring spawn))
+ (libraries bos cmdliner fpath rresult astring spawn
+            logs logs.cli logs.fmt fmt.tty fmt.cli))

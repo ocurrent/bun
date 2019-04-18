@@ -34,8 +34,8 @@ module Parse = struct
   let get_stats_lines ~id output =
     Bos.OS.File.read_lines Fpath.(output / id / "fuzzer_stats")
 
-  let get_cores verbosity cpu =
-    let aux verbosity gotcpus =
+  let get_cores cpu =
+    let aux gotcpus =
       let process_preamble = "more processes on " in
       let more_processes = Bos.Cmd.(v "grep" % process_preamble) in
       let (>>=) = Rresult.R.bind in
@@ -44,8 +44,7 @@ module Parse = struct
             |> List.find (function | Some _ -> true | None -> false) with
       | None -> Ok 0
       | Some (_, cores) ->
-        if (List.length verbosity > 1) then
-          Printf.printf "cores line: %s\n%!" cores;
+        Logs.debug (fun f -> f "cores line: %s" cores);
         let words = Astring.String.fields cores in
         (* afl-gotcpu sometimes tells us that some CPUs *might* be overcommitted.
            it's usually too conservative; we want to try to use the CPUs that it's
@@ -57,7 +56,7 @@ module Parse = struct
     let er = Rresult.R.error_msg_to_invalid_arg in
     try
       Bos.OS.Cmd.(run_out ~err:err_run_out (Bos.Cmd.v cpu) |> out_run_in |> er) |>
-      aux verbosity |> er
+      aux |> er
     with
     | Not_found | Invalid_argument _ | Failure _ -> 0
 

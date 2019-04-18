@@ -34,11 +34,6 @@ let no_kill =
   other instances once a single instance terminates for any reason." in
   Cmdliner.Arg.(value & flag & info ["n"; "no-kill"] ~docv:"NO_KILL" ~doc)
 
-let verbosity =
-  let doc = "Verbosity. -v echoes what `bun` is invoking and is noisier in \
-             error cases; -vv gets stdout from the underlying fuzzer." in
-  Cmdliner.Arg.(value & flag_all & info ["v"] ~docv:"VERBOSE" ~doc)
-
 let fpath_conv = Cmdliner.Arg.conv Fpath.(of_string, pp)
 
 let input_dir =
@@ -77,20 +72,17 @@ let whatsup =
 
 let pids = ref []
 
-let mon verbose whatsup output =
+let mon whatsup output =
   match Bos.OS.Path.matches @@ Fpath.(output / "$(dir)" / "fuzzer_stats") with
   | Error (`Msg e) ->
     (* this is probably just a race -- keep trying *)
     (* (but TODO retry-bound this and print an appropriate message if it doesn't
        look like we were just too fast *)
-    if (List.length verbose > 0) then
-      Printf.eprintf "No fuzzer_stats in the output directory:%s\n%!" e;
+    Logs.info (fun f -> f "No fuzzer_stats in the output directory:%s" e);
     ignore @@ Unix.alarm 5;
     Unix.pause ()
   | Ok [] ->
-    if (List.length verbose > 1) then
-      Printf.eprintf "No fuzzer stats files found - waiting on the world to \
-                      change\n%!";
+    Logs.debug (fun f -> f "No fuzzer stats files found - waiting on the world to change");
     ignore @@ Unix.alarm 5;
     Unix.pause ()
   | Ok _ ->
@@ -101,8 +93,7 @@ let mon verbose whatsup output =
        thing for `bun` to test itself on. *)
     let () =
       match Bos.OS.Cmd.run Bos.Cmd.(v whatsup % Fpath.to_string output) with
-      | Error (`Msg e) -> if (List.length verbose > 0) then
-          Printf.eprintf "error running whatsup: %s\n%!" e
+      | Error (`Msg e) -> Logs.warn (fun f -> f "error running whatsup: %s" e)
       | Ok () -> ()
     in
     ignore @@ Unix.alarm 60;
@@ -129,7 +120,7 @@ let crash_detector no_kill output _sigchld =
      no_kill is not set), we should clean up as if we'd received SIGTERM. *)
   List.iter (fun (pid, _id) ->
       match Unix.(waitpid [WNOHANG] pid) with
-      | 0, _ -> Printf.printf "All fuzzers have terminated.\n%!"; () (* pid 0 means nothing was waiting *)
+      | 0, _ -> Logs.app (fun f -> f "All fuzzers have terminated."); () (* pid 0 means nothing was waiting *)
       | pid, _ when pid < 0 -> (* an error *) ()
       | _pid, WSTOPPED _ -> (* we don't care *) ()
       | pid, status ->
@@ -137,20 +128,18 @@ let crash_detector no_kill output _sigchld =
         pids := other_pids;
         match !pids, status with
         | [], WEXITED 0 -> begin
-          Printf.printf "The last (or only) fuzzer (%d) has finished!\n%!" pid;
+          Logs.app (fun f -> f "The last (or only) fuzzer (%d) has finished!" pid);
           Files.Print.print_crashes output |> Rresult.R.get_ok;
           match Files.Parse.get_crash_files output with
           | Ok [] -> exit 0
           | _ -> exit 1
         end
         | [], WEXITED d ->
-          Printf.printf "The last (or only) fuzzer (%d) has failed with code %d\n%!"
-            pid d;
+          Logs.warn (fun f -> f "The last (or only) fuzzer (%d) has failed with code %d" pid d);
           Files.Print.print_crashes output |> Rresult.R.get_ok;
           exit 1
         | [], WSIGNALED s ->
-          Printf.printf "The last (or only) fuzzer (%d) was killed by signal %d\n%!"
-            pid s;
+          Logs.warn (fun f -> f "The last (or only) fuzzer (%d) was killed by signal %d" pid s);
           Files.Print.print_crashes output |> Rresult.R.get_ok;
           exit 1
         | _, _ ->
@@ -179,7 +168,7 @@ let crash_detector no_kill output _sigchld =
     ) !pids
 
 
-let spawn verbosity env id fuzzer memory input output program program_argv =
+let spawn env id fuzzer memory input output program program_argv =
   let fuzzer = Fpath.to_string fuzzer in
   let argv = [fuzzer;
               "-m"; (string_of_int memory);
@@ -187,12 +176,11 @@ let spawn verbosity env id fuzzer memory input output program program_argv =
               "-o"; (Fpath.to_string output);
               "-S"; string_of_int id;
               "--"; program; ] @ program_argv @ ["@@"] in
-  if (List.length verbosity) > 0 then Printf.printf "Executing %s\n%!" @@
-    String.concat " " argv;
-  let stdout = match (List.length verbosity) > 1 with
-    | true -> Unix.stdout
-    | false ->
-      Unix.openfile (Fpath.to_string Bos.OS.File.null) [Unix.O_WRONLY] 0o200
+  Logs.info (fun f -> f "Executing %s" @@ String.concat " " argv);
+  let stdout =
+    match Logs.level () with
+    | Some Logs.Debug  -> Unix.stdout
+    | _ -> Unix.openfile (Fpath.to_string Bos.OS.File.null) [Unix.O_WRONLY] 0o200
   in
   (* see afl-latest's docs/env_variables.txt for information on these --
      the variables we pass ask AFL to finish after it's "done" (the cycle
@@ -200,11 +188,10 @@ let spawn verbosity env id fuzzer memory input output program program_argv =
      (if sad) request not to show us its excellent UI *)
   let env = Spawn.Env.of_list ("AFL_EXIT_WHEN_DONE=1"::"AFL_NO_UI=1"::env) in
   let pid = Spawn.spawn ~env ~stdout ~prog:fuzzer ~argv () in
-  if (List.length verbosity) > 0 then
-    Printf.printf "%s launched: PID %d\n%!" fuzzer pid;
+  Logs.info (fun f -> f "%s launched: PID %d" fuzzer pid);
   pid
 
-let fuzz verbosity no_kill single_core max_cores
+let fuzz () no_kill single_core max_cores
          fuzzer whatsup gotcpu
          input output memory program program_argv
   : (unit, Rresult.R.msg) result =
@@ -215,7 +202,7 @@ let fuzz verbosity no_kill single_core max_cores
   in
   let cores =
     let limit = if single_core then Some 1 else max_cores in
-    let available = Files.Parse.get_cores verbosity gotcpu in
+    let available = Files.Parse.get_cores gotcpu in
     match limit with
     | None -> available
     | Some limit ->
@@ -223,12 +210,11 @@ let fuzz verbosity no_kill single_core max_cores
       max 1 (min available limit)
   in
   Files.fixup_input input >>= fun () ->
-  if (List.length verbosity) > 0 then
-    Printf.printf "%d available cores detected!\n%!" cores;
+  Logs.info (fun f -> f "%d available cores detected!" cores);
   let fill_cores fuzzer start_id =
     let rec launch_more max i =
       if i > max then () else begin
-        pids := ((spawn verbosity env i fuzzer memory input output program
+        pids := ((spawn env i fuzzer memory input output program
                     program_argv), i) :: !pids;
         launch_more cores (i+1)
       end
@@ -244,17 +230,17 @@ let fuzz verbosity no_kill single_core max_cores
   (* always start at least one afl-fuzz *)
   Sys.(set_signal sigterm (Signal_handle term_handler));
   Sys.(set_signal sigchld (Signal_handle (crash_detector no_kill output)));
-  Sys.(set_signal sigalrm (Signal_handle (fun _ -> mon verbosity whatsup output)));
+  Sys.(set_signal sigalrm (Signal_handle (fun _ -> mon whatsup output)));
   Sys.(set_signal sigusr1 (Signal_handle (fun _ -> Files.Print.print_crashes output |>
                                           fun _ -> ())));
   let id = 1 in
   match single_core with
   | true ->
-    let primary_pid = spawn verbosity env id fuzzer memory input output
+    let primary_pid = spawn env id fuzzer memory input output
       program program_argv in
     pids := [primary_pid, id];
     let delay = 60 in
-    Printf.printf "Fuzzers launched.  Waiting %d seconds for the first status update...\n%!" delay;
+    Logs.app (fun f -> f "Fuzzers launched.  Waiting %d seconds for the first status update..." delay);
     ignore @@ Unix.alarm delay; (* Signal handler for sigalrm will call `mon` in 60s *)
     Ok (Unix.pause ())
   | false ->
@@ -264,13 +250,26 @@ let fuzz verbosity no_kill single_core max_cores
        affinity. *)
     fill_cores fuzzer id;
     let delay = max 1 (60 - cores) in
-    Printf.printf "Fuzzers launched.  Waiting %d seconds for the first status update...\n%!" delay;
+    Logs.app (fun f -> f "Fuzzers launched.  Waiting %d seconds for the first status update..." delay);
     ignore @@ Unix.alarm delay;
     Ok (Unix.pause ())
 
+let pp_header ppf x =
+  let { Unix.tm_hour; tm_min; tm_sec; _ } = Unix.gmtime (Unix.gettimeofday ()) in
+  Fmt.pf ppf "%02d:%02d.%02d:" tm_hour tm_min tm_sec;
+  Logs_fmt.pp_header ppf x
+
+let setup_log =
+  let set style_renderer level =
+    Fmt_tty.setup_std_outputs ?style_renderer ();
+    Logs.set_level level;
+    Logs.set_reporter (Logs_fmt.reporter ~pp_header ())
+  in
+  Cmdliner.Term.(const set $ Fmt_cli.style_renderer () $ Logs_cli.level ())
+
 let fuzz_t =
   Cmdliner.Term.(const fuzz
-                 $ verbosity $ no_kill $ single_core $ max_cores (* bun/mon args *)
+                 $ setup_log $ no_kill $ single_core $ max_cores (* bun/mon args *)
                  $ fuzzer $ whatsup $ gotcpu (* external cmds *)
                  $ input_dir $ output_dir $ memory
                  $ program $ program_argv) (* fuzzer flags *)
@@ -280,6 +279,6 @@ let bun_info =
   Cmdliner.Term.(info ~version:"%%VERSION%%" ~exits:default_exits ~doc "bun")
 
 let () = Cmdliner.Term.exit @@ match Cmdliner.Term.eval (fuzz_t, bun_info) with
-    | `Ok (Error (`Msg s)) -> Printf.eprintf "%s\n%!" s;
+    | `Ok (Error (`Msg s)) -> Logs.err (fun f -> f "%s" s);
       `Error `Exn
     | a -> a

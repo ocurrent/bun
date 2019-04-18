@@ -18,4 +18,6 @@ depends: [
   "crowbar" {test}
   "spawn" {>= "v0.12"}
   "afl" {= "2.52b"}
+  "logs"
+  "fmt"
 ]

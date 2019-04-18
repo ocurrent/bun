@@ -16,8 +16,8 @@ depends: [
   "rresult" {>= "0.3.0" }
   "astring"
   "crowbar" {test}
-  "spawn" {>= "v0.12"}
   "afl" {= "2.52b"}
   "logs"
   "fmt"
+  "lwt"
 ]

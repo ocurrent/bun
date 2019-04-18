@@ -6,6 +6,7 @@
 
 (executable
  (name long)
+ (ocamlopt_flags -afl-instrument)
  (modules long)
  (libraries crowbar))
 

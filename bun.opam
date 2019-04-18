@@ -5,11 +5,11 @@ homepage: "https://github.com/yomimono/ocaml-bun"
 bug-reports: "https://github.com/yomimono/ocaml-bun/issues"
 dev-repo: "https://github.com/yomimono/ocaml-bun.git"
 license: "MIT"
-build: [[ "jbuilder" "build" "-p" name "-j" jobs ]]
-build-test: [[ "jbuilder" "runtest" ]]
+build: [[ "dune" "build" "-p" name "-j" jobs ]]
+build-test: [[ "dune" "runtest" "-p" name "-j" jobs ]]
 available: [ ocaml-version >= "4.05" ]
 depends: [
-  "jbuilder" {build}
+  "dune" {build & >= "1.0"}
   "bos" {>= "0.2.0" }
   "cmdliner" {>= "1.0.0" }
   "fpath"

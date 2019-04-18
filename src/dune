@@ -1,0 +1,4 @@
+(executable
+ (name bun)
+ (public_name bun)
+ (libraries bos cmdliner fpath rresult astring spawn))

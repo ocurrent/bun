@@ -102,12 +102,13 @@ let mon whatsup output =
   in
   loop ()
 
-let term_handler ~switch _sigterm =
+let term_handler ~switch ~no_kill ~output _sigterm =
   Logs.app (fun f -> f
                "Terminating the remaining fuzzing processes in response to SIGTERM.@.\
                 It's likely that this job could benefit from more fuzzing time @\n\
                 - consider running it in an environment with more available cores or allowing @\n\
                 the fuzzers more time to explore the state space, if possible.");
+  if no_kill then (Files.Print.print_crashes output |> Rresult.R.get_ok);
   Lwt.async (fun () -> Lwt_switch.turn_off switch)
 
 let pp_fuzzer f (id, proc) =
@@ -207,7 +208,7 @@ let fuzz () no_kill single_core max_cores
     Lwt_main.run @@ begin
       let open Lwt.Infix in
       Lwt_switch.with_switch @@ fun switch ->
-      let _ : Lwt_unix.signal_handler_id = Lwt_unix.(on_signal Sys.sigterm (term_handler ~switch)) in
+      let _ : Lwt_unix.signal_handler_id = Lwt_unix.(on_signal Sys.sigterm (term_handler ~switch ~no_kill ~output)) in
       let _ : Lwt_unix.signal_handler_id = Lwt_unix.(on_signal Sys.sigusr1 (sigusr1_handler ~output)) in
       let id = 1 in
       let fuzzers =

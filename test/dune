@@ -6,17 +6,27 @@
 
 (executable
  (name long)
+ (ocamlopt_flags -afl-instrument)
  (modules long)
  (libraries crowbar))
 
 (alias
  (name runtest)
  (deps ../src/bun.exe short.exe)
+ (locks core)
  (action
-  (run timeout 2s ../src/bun.exe -vv ./short.exe)))
+  (progn
+   (with-stdout-to "shorttest-output"
+     (bash "! timeout 2s ../src/bun.exe -vv ./short.exe"))
+   (bash "grep 'Crashes found!' shorttest-output")
+   (cat shorttest-output)
+  )
+ )
+)
 
 (alias
  (name longtest)
  (deps ../src/bun.exe long.exe)
+ (locks core)
  (action
   (run timeout 65s ../src/bun.exe -vv ./long.exe)))

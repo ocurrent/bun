@@ -1,3 +1,10 @@
+v0.3.3 2019-05-24
+-----------------
+
+- use Lwt to manage processes (#7, by @talex5)
+- print crashes when killing a fuzzer in no-kill mode (#8, by @NathanReb)
+- do some CI maintenance (#10, by @yomimono)
+
 v0.3.2 2018-05-01
 -----------------
 

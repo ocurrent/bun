@@ -1,2 +1,4 @@
 _build
 .merlin
+bun.install
+input/

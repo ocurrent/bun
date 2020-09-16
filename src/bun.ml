@@ -27,6 +27,10 @@ let max_cores =
   Cmdliner.Arg.(value & opt (some int) None
                 & info ["max-cores"] ~docv:"MAX_CORES" ~doc ~env:(env_var "MAX_CORES"))
 
+let no_cgroups =
+  let doc = "Do not use cgroups for managing child processes" in
+  Cmdliner.Arg.(value & flag & info ["no-cgroups"] ~docv:"NO_CGROUPS" ~doc)
+
 let no_kill =
   let doc = "Allow afl-fuzz to continue attempting to find crashes after the
   first crash is discovered.  In this mode, individual afl-fuzz instances will
@@ -169,14 +173,54 @@ let sigusr1_handler ~output _ =
   | Ok () -> ()
   | Error (`Msg m) -> Logs.err (fun f -> f "print_crashes: %s" m)
 
-let fuzz () no_kill single_core max_cores
-    fuzzer whatsup gotcpu
-    input output memory program program_argv
-  : (unit, Rresult.R.msg) result =
+let cgroups_killall cgroup_procs () =
+  Logs.on_error_msg ~use:ignore
+  @@
   let open Rresult.R.Infix in
-  let env = Unix.environment () |> Array.to_list |> fun env ->
-            match no_kill with | false -> "AFL_BENCH_UNTIL_CRASH=1"::env
-                               | true -> env
+  Bos.OS.File.read_lines cgroup_procs >>| fun procs ->
+  let me = Unix.getpid () in
+  procs |> List.map int_of_string
+  |> List.filter (( <> ) me)
+  |> List.iter @@ fun pid ->
+  Logs.info (fun m -> m "Killing PID %d" pid);
+  Unix.kill pid 9
+
+let cgroups_init () =
+  let open Rresult.R.Infix in
+  let p = Fpath.v "/proc/self/cgroup" in
+  Bos.OS.File.read_lines p >>= function
+  | [] -> Rresult.R.error_msg "Empty /proc/self/cgroup file"
+  | line :: _ -> (
+      match Astring.String.cuts ~sep:":" line with
+      | [ _; _; cgroup ] ->
+          let cgroup = Astring.String.drop ~max:1 cgroup in
+          let cgroup = Fpath.(v "/sys/fs/cgroup" // v cgroup / "afl") in
+          let cgroup_procs = Fpath.(cgroup / "cgroup.procs") in
+          Logs.debug (fun m -> m "Creating cgroup %a" Fpath.pp cgroup);
+          Bos.OS.Dir.create ~path:false ~mode:0o755 cgroup >>| fun _ ->
+          (* move ourselves into the newly created cgroup, rename doesn't work here,
+             have to write file directly *)
+          let f = open_out Fpath.(cgroup_procs |> to_string) in
+          ( Fun.protect ~finally:(fun () -> close_out f) @@ fun () ->
+            output_string f "0" );
+          Logs.debug (fun m -> m "Moved to cgroup %a" Fpath.pp cgroup);
+          at_exit (cgroups_killall cgroup_procs)
+      | _ -> Rresult.R.error_msgf "Unable to parse /proc/self/cgroup %S" line )
+
+let cgroups_init () =
+  Rresult.R.trap_exn cgroups_init ()
+  |> Rresult.R.error_exn_trap_to_msg |> Rresult.R.join
+  |> Rresult.R.reword_error_msg ~replace:true (fun msg ->
+         Rresult.R.msgf "Failed to initialize cgroups: %s" msg)
+
+let fuzz () no_kill single_core max_cores no_cgroups fuzzer whatsup gotcpu input
+    output memory program program_argv : (unit, Rresult.R.msg) result =
+  let open Rresult.R.Infix in
+  if not no_cgroups then
+    Logs.on_error_msg ~use:ignore ~level:Logs.Info @@ cgroups_init ();
+  let env =
+    Unix.environment () |> Array.to_list |> fun env ->
+    match no_kill with false -> "AFL_BENCH_UNTIL_CRASH=1" :: env | true -> env
   in
   let cores =
     let limit = if single_core then Some 1 else max_cores in
@@ -267,6 +311,7 @@ let setup_log =
 let fuzz_t =
   Cmdliner.Term.(const fuzz
                  $ setup_log $ no_kill $ single_core $ max_cores (* bun/mon args *)
+                 $ no_cgroups
                  $ fuzzer $ whatsup $ gotcpu (* external cmds *)
                  $ input_dir $ output_dir $ memory
                  $ program $ program_argv) (* fuzzer flags *)

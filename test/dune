@@ -10,19 +10,22 @@
  (modules long)
  (libraries crowbar))
 
+(rule
+ (target shorttest-output)
+ (locks core)
+ (deps ../src/bun.exe short.exe)
+ (action
+  (with-stdout-to
+   %{target}
+   (bash "! timeout 2s ../src/bun.exe -vv ./short.exe"))))
+
 (alias
  (name runtest)
- (deps ../src/bun.exe short.exe)
  (locks core)
  (action
   (progn
-   (with-stdout-to "shorttest-output"
-     (bash "! timeout 2s ../src/bun.exe -vv ./short.exe"))
    (bash "grep 'Crashes found!' shorttest-output")
-   (cat shorttest-output)
-  )
- )
-)
+   (cat shorttest-output))))
 
 (alias
  (name longtest)

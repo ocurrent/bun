@@ -13,10 +13,15 @@ let program_argv =
   Cmdliner.Arg.(value & pos_right 0 string [] & info [] ~docv:"PROGRAM_ARGS"
                   ~doc)
 
+let no_main_instance =
+  let doc = "Do not run a main instance (a main instance is required by afl++, but not afl)" in
+  Cmdliner.Arg.(value & flag & info ["no-main-instance"] ~docv:"NO_MAIN" ~doc)
+
+
 let single_core =
   let doc = "Start only one fuzzer instance, even if more CPU cores are \
              available.  Even in this mode, the (lone) fuzzer will be invoked \
-             with -S and an id; for more on implications, see the afl-fuzz \
+             with -S/-M and an id; for more on implications, see the afl-fuzz \
              parallel_fuzzing.txt documentation." in
   Cmdliner.Arg.(value & flag & info ["s"; "single-core"] ~docv:"SINGLE_CORE" ~doc)
 
@@ -137,13 +142,13 @@ let crash_detector output fuzzer status =
     Error `Crash_found
   | WSTOPPED _ -> assert false
 
-let spawn ~switch env id fuzzer memory input output program program_argv =
+let spawn ~main ~switch env id fuzzer memory input output program program_argv =
   let fuzzer = Fpath.to_string fuzzer in
   let argv = [fuzzer;
               "-m"; (string_of_int memory);
               "-i"; (Fpath.to_string input);
               "-o"; (Fpath.to_string output);
-              "-S"; string_of_int id;
+              (if main && id = 1 then "-M" else "-S"); string_of_int id;
               "--"; program; ] @ program_argv @ ["@@"] in
   Logs.info (fun f -> f "Executing %s" @@ String.concat " " argv);
   let stdout =
@@ -213,7 +218,7 @@ let cgroups_init () =
   |> Rresult.R.reword_error_msg ~replace:true (fun msg ->
          Rresult.R.msgf "Failed to initialize cgroups: %s" msg)
 
-let fuzz () no_kill single_core max_cores no_cgroups fuzzer whatsup gotcpu input
+let fuzz () no_kill single_core max_cores no_cgroups no_main_instance fuzzer whatsup gotcpu input
     output memory program program_argv : (unit, Rresult.R.msg) result =
   let open Rresult.R.Infix in
   if not no_cgroups then
@@ -233,10 +238,11 @@ let fuzz () no_kill single_core max_cores no_cgroups fuzzer whatsup gotcpu input
   in
   Files.fixup_input input >>= fun () ->
   Logs.info (fun f -> f "%d available cores detected!" cores);
+  let main = not no_main_instance in
   let fill_cores ~switch fuzzer start_id =
     let rec launch_more max i =
       if i > max then [] else begin
-        let fuzzer = (i, spawn ~switch env i fuzzer memory input output program program_argv) in
+        let fuzzer = (i, spawn ~main ~switch env i fuzzer memory input output program program_argv) in
         fuzzer :: launch_more cores (i+1)
       end
     in
@@ -258,7 +264,7 @@ let fuzz () no_kill single_core max_cores no_cgroups fuzzer whatsup gotcpu input
       let fuzzers =
         match single_core with
         | true ->
-          let proc = spawn ~switch env id fuzzer memory input output program program_argv in
+          let proc = spawn ~main ~switch env id fuzzer memory input output program program_argv in
           let fuzzer = (id, proc) in
           Logs.app (fun f -> f "Fuzzer %a launched." pp_fuzzer fuzzer);
           [fuzzer]
@@ -311,7 +317,7 @@ let setup_log =
 let fuzz_t =
   Cmdliner.Term.(const fuzz
                  $ setup_log $ no_kill $ single_core $ max_cores (* bun/mon args *)
-                 $ no_cgroups
+                 $ no_cgroups $ no_main_instance
                  $ fuzzer $ whatsup $ gotcpu (* external cmds *)
                  $ input_dir $ output_dir $ memory
                  $ program $ program_argv) (* fuzzer flags *)

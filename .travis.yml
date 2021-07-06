@@ -5,7 +5,7 @@ services:
 - docker
 env:
   global:
-  - PINS="bun:. xmldiff:https://github.com/yomimono/xmldiff.git#4.06-compat"
+  - PINS="bun:."
   - DISTRO="debian-stable"
   matrix:
   - PACKAGE="bun" OCAML_VERSION="4.05.0"

@@ -15,12 +15,14 @@
  (deps ../src/bun.exe short.exe)
  (locks core)
  (action
-  (progn
-   (with-stdout-to
-    "shorttest-output"
-    (bash "! timeout 2s ../src/bun.exe -vv ./short.exe"))
-   (bash "grep 'Crashes found!' shorttest-output")
-   (cat shorttest-output))))
+  (setenv AFL_NO_AFFINITY 1
+  (setenv AFL_SKIP_CPUFREQ 1
+   (progn
+    (with-stdout-to
+      "shorttest-output"
+      (bash "! timeout 2s ../src/bun.exe -vv --max-cores=2 ./short.exe"))
+    (bash "grep 'Crashes found!' shorttest-output")
+    (cat shorttest-output))))))
 
 (rule
  (alias longtest)

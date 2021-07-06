@@ -21,7 +21,7 @@
     (with-stdout-to
       "shorttest-output"
       (bash "! timeout 2s ../src/bun.exe -vv --max-cores=2 ./short.exe"))
-    (bash "grep 'Crashes found!' shorttest-output")
+    (bash "grep 'Crashes found!' shorttest-output || cat shorttest-output")
     (cat shorttest-output))))))
 
 (rule

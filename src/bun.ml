@@ -139,7 +139,7 @@ let spawn ~switch env id fuzzer memory input output program program_argv =
               "-m"; (string_of_int memory);
               "-i"; (Fpath.to_string input);
               "-o"; (Fpath.to_string output);
-              "-S"; string_of_int id;
+              (if id = 1 then "-M" else "-S"); string_of_int id;
               "--"; program; ] @ program_argv @ ["@@"] in
   Logs.info (fun f -> f "Executing %s" @@ String.concat " " argv);
   let stdout =

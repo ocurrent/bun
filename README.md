@@ -2,7 +2,7 @@
 
 `bun` is a tool for integrating fuzzer-based tests into a conventional CI pipeline.  The popular afl-fuzz tool in particular is designed to use only one CPU core per invocation and keep records on persistent storage for later examination by an analyst; this particular workflow is ill-suited for cloud-based CI testing services, which do not persist storage for users and unceremoniously kill long-running processes.  It also makes using available compute resources (two CPU cores even for free-tier Travis CI) challenging.  `bun` attempts to solve these problems.
 
-![](bun-demo.gif?raw=true)
+![Demo video](https://user-images.githubusercontent.com/554131/124629462-60b7cf00-de79-11eb-9779-a3909bc90a05.gif)
 
 ## How does it work?
 
@@ -43,10 +43,10 @@ Fatal error: exception Crowbar.TestFailure
 
 # Building
 
-The usual `jbuilder` runes should be sufficient:
+The usual `dune` command should be sufficient:
 
 ```
-jbuilder build --dev @install
+dune build
 ```
 
 # For CI

@@ -1,3 +1,10 @@
+v0.3.4 2021-07-07
+-----------------
+
+- update to dune 2 (#18, by @talex5 and @edwintorok)
+- use `-M` for first worker (#17, by @edwintorok and @talex5)
+- move bun to https://github.com/ocurrent/bun (#20, by @talex5)
+
 v0.3.3 2019-05-24
 -----------------
 

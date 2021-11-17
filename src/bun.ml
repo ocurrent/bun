@@ -199,9 +199,9 @@ let fuzz () no_kill single_core max_cores
     launch_more cores start_id
   in
   Bos.OS.Cmd.find_tool Bos.Cmd.(v fuzzer) >>= function
-  | None -> Error (`Msg (Fmt.strf "could not find %s to invoke it -- \
-                                   try specifying the full path, or ensuring the binary \
-                                   is in your PATH" fuzzer))
+  | None -> Error (`Msg (Fmt.str "could not find %s to invoke it -- \
+                                  try specifying the full path, or ensuring the binary \
+                                  is in your PATH" fuzzer))
   | Some fuzzer ->
     Bos.OS.Dir.create output >>= fun _ ->
     (* always start at least one afl-fuzz *)

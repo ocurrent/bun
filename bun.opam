@@ -19,7 +19,7 @@ depends: [
   "crowbar" {with-test}
   "afl" {= "2.52b"}
   "logs"
-  "fmt"
+  "fmt" {>= "0.8.7"}
   "lwt"
 ]
 build: [

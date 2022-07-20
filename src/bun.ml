@@ -21,11 +21,12 @@ let single_core =
   Cmdliner.Arg.(value & flag & info ["s"; "single-core"] ~docv:"SINGLE_CORE" ~doc)
 
 let max_cores =
+  let env = Cmdliner.Cmd.Env.info "MAX_CORES" in
   let doc = "Maximum number of instances to run -- of CPU cores to use. \
              If no value is given, all the cores found by GOTCPU \
              will be used." in
   Cmdliner.Arg.(value & opt (some int) None
-                & info ["max-cores"] ~docv:"MAX_CORES" ~doc ~env:(env_var "MAX_CORES"))
+                & info ["max-cores"] ~docv:"MAX_CORES" ~doc ~env)
 
 let no_kill =
   let doc = "Allow afl-fuzz to continue attempting to find crashes after the
@@ -48,27 +49,31 @@ let output_dir =
                 & info ["o"; "output"] ~docv:"OUTPUT" ~doc)
 
 let memory =
+  let env = Cmdliner.Cmd.Env.info "MEMORY" in
   let doc = "Memory limit to pass to the fuzzer." in
   Cmdliner.Arg.(value & opt int 200
-                & info ["mem"; "m"] ~docv:"MEMORY" ~doc ~env:(env_var "MEMORY"))
+                & info ["mem"; "m"] ~docv:"MEMORY" ~doc ~env)
 
 let fuzzer =
+  let env = Cmdliner.Cmd.Env.info "FUZZER" in
   let doc = "The fuzzer to invoke." in
   Cmdliner.Arg.(value & opt file "afl-fuzz"
-                & info ["fuzzer"] ~docv:"FUZZER" ~doc ~env:(env_var "FUZZER"))
+                & info ["fuzzer"] ~docv:"FUZZER" ~doc ~env)
 
 let gotcpu =
+  let env = Cmdliner.Cmd.Env.info "GOTCPU" in
   let doc = "The command to run to see whether more cores are available. For \
              all practical purposes, it should be afl-gotcpu." in
   Cmdliner.Arg.(value & opt file "afl-gotcpu"
-                & info ["gotcpu"] ~docv:"GOTCPU" ~doc ~env:(env_var "GOTCPU"))
+                & info ["gotcpu"] ~docv:"GOTCPU" ~doc ~env)
 
 let whatsup =
+  let env = Cmdliner.Cmd.Env.info "WHATSUP" in
   let doc = "The command to run to display information on the fuzzer stats \
   during operation.  This is usually afl-whatsup, but `ocaml-bun` is not \
              sensitive to its output, so you can use whatever you like." in
   Cmdliner.Arg.(value & opt file "afl-whatsup" & info ["whatsup"]
-                  ~docv:"WHATSUP" ~doc ~env:(env_var "WHATSUP"))
+                  ~docv:"WHATSUP" ~doc ~env)
 
 (* Print progress reports from time to time. *)
 let mon whatsup output =
@@ -172,8 +177,8 @@ let sigusr1_handler ~output _ =
 let fuzz () no_kill single_core max_cores
     fuzzer whatsup gotcpu
     input output memory program program_argv
-  : (unit, Rresult.R.msg) result =
-  let open Rresult.R.Infix in
+  : (unit, string) result =
+  let open Rresult in
   let env = Unix.environment () |> Array.to_list |> fun env ->
             match no_kill with | false -> "AFL_BENCH_UNTIL_CRASH=1"::env
                                | true -> env
@@ -187,7 +192,7 @@ let fuzz () no_kill single_core max_cores
       (* always launch at least 1 *)
       max 1 (min available limit)
   in
-  Files.fixup_input input >>= fun () ->
+  Files.fixup_input input |> R.reword_error (fun (`Msg err) -> err) >>= fun () ->
   Logs.info (fun f -> f "%d available cores detected!" cores);
   let fill_cores ~switch fuzzer start_id =
     let rec launch_more max i =
@@ -198,12 +203,12 @@ let fuzz () no_kill single_core max_cores
     in
     launch_more cores start_id
   in
-  Bos.OS.Cmd.find_tool Bos.Cmd.(v fuzzer) >>= function
-  | None -> Error (`Msg (Fmt.str "could not find %s to invoke it -- \
-                                  try specifying the full path, or ensuring the binary \
-                                  is in your PATH" fuzzer))
+  Bos.OS.Cmd.find_tool Bos.Cmd.(v fuzzer) |> R.reword_error (fun (`Msg err) -> err) >>= function
+  | None -> Error (Fmt.str "could not find %s to invoke it -- \
+                            try specifying the full path, or ensuring the binary \
+                            is in your PATH" fuzzer)
   | Some fuzzer ->
-    Bos.OS.Dir.create output >>= fun _ ->
+    Bos.OS.Dir.create output |> R.reword_error (fun (`Msg err) -> err) >>= fun _ ->
     (* always start at least one afl-fuzz *)
     Lwt_main.run @@ begin
       let open Lwt.Infix in
@@ -248,7 +253,7 @@ let fuzz () no_kill single_core max_cores
       let progress = mon whatsup output in
       Lwt.choose [progress; results] >|= function
       | Ok () -> Ok ()
-      | Error `Crash_found -> Error (`Msg "All fuzzers finished, but some crashes were found!")
+      | Error `Crash_found -> Error ("All fuzzers finished, but some crashes were found!")
     end
 
 let pp_header ppf x =
@@ -273,9 +278,6 @@ let fuzz_t =
 
 let bun_info =
   let doc = "invoke afl-fuzz on a program in a CI-friendly way" in
-  Cmdliner.Term.(info ~version:"%%VERSION%%" ~exits:default_exits ~doc "bun")
+  Cmdliner.Cmd.(info ~version:"%%VERSION%%" ~exits:Exit.defaults ~doc "bun")
 
-let () = Cmdliner.Term.exit @@ match Cmdliner.Term.eval (fuzz_t, bun_info) with
-  | `Ok (Error (`Msg s)) -> Logs.err (fun f -> f "%s" s);
-    `Error `Exn
-  | a -> a
+let () = exit @@ Cmdliner.Cmd.eval_result (Cmdliner.Cmd.v bun_info fuzz_t)

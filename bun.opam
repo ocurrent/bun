@@ -1,6 +1,6 @@
 opam-version: "2.0"
 synopsis: "Simple management of afl-fuzz processes"
-maintainer: "maintenance@identity-function.com"
+maintainer: ["Ben Andrew <benmandrew@gmail.com>" "Tim McGilchrist <timmcgil@gmail.com>"]
 authors: [
   "Mindy Preston"
   "Thomas Leonard"
